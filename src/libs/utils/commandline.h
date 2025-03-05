@@ -23,13 +23,6 @@ class MacroExpander;
 class QTCREATOR_UTILS_EXPORT ProcessArgs
 {
 public:
-    static ProcessArgs createWindowsArgs(const QString &args);
-    static ProcessArgs createUnixArgs(const QStringList &args);
-
-    QString toWindowsArgs() const;
-    QStringList toUnixArgs() const;
-    QString toString() const;
-
     enum SplitError {
         SplitOk = 0, //! All went just fine
         BadQuoting, //! Command contains quoting errors
@@ -45,12 +38,13 @@ public:
     //! Join an argument list into a shell command
     static QString joinArgs(const QStringList &args, OsType osType = HostOsInfo::hostOs());
     //! Prepare argument of a shell command for feeding into QProcess
-    static ProcessArgs prepareArgs(const QString &args, SplitError *err, OsType osType,
-                                   const Environment *env = nullptr, const FilePath &pwd = {},
-                                   bool abortOnMeta = true);
-    //! Prepare a shell command for feeding into QProcess
-    static bool prepareCommand(const CommandLine &cmdLine, QString *outCmd, ProcessArgs *outArgs,
+    static QString prepareArgs(const QString &args, SplitError *err, OsType osType,
                                const Environment *env = nullptr, const FilePath &pwd = {});
+    //! Prepare a shell command for feeding into QProcess.
+    //! In case of Windows, outargs contains a single element.
+    static bool prepareShellCommand(const CommandLine &cmdLine,
+                                    QString *outCmd, QStringList *outArgs,
+                                    const Environment &env, const FilePath &pwd);
     //! Quote and append each argument to a shell command
     static void addArgs(QString *args, const QStringList &inArgs);
     //! Quote and append each argument to a shell command
@@ -111,11 +105,6 @@ public:
         QString m_str;
         ArgIterator m_ait;
     };
-
-private:
-    QString m_windowsArgs;
-    QStringList m_unixArgs;
-    bool m_isWindows;
 };
 
 class QTCREATOR_UTILS_EXPORT RunResult

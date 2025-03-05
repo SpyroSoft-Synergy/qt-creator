@@ -244,11 +244,21 @@ void DefaultImpl::start()
 bool DefaultImpl::dissolveCommand(QString *program, QStringList *arguments)
 {
     const CommandLine &commandLine = m_setup.m_commandLine;
+
     QString commandString;
-    ProcessArgs processArgs;
-    const bool success = ProcessArgs::prepareCommand(commandLine, &commandString, &processArgs,
-                                                     &m_setup.m_environment,
-                                                     m_setup.m_workingDirectory);
+    QStringList commandArgs;
+    const bool success = ProcessArgs::prepareShellCommand(commandLine,
+                                                          &commandString, &commandArgs,
+                                                          m_setup.m_environment,
+                                                          m_setup.m_workingDirectory);
+    if (!success) {
+        const ProcessResultData result = {0,
+                                          QProcess::NormalExit,
+                                          QProcess::FailedToStart,
+                                          Tr::tr("Error in command line.")};
+        emit done(result);
+        return false;
+    }
 
     if (commandLine.executable().osType() == OsTypeWindows) {
         QString args;
@@ -261,21 +271,14 @@ bool DefaultImpl::dissolveCommand(QString *program, QStringList *arguments)
         } else if (m_setup.m_lowPriority) {
             m_setup.m_belowNormalPriority = true;
         }
-        ProcessArgs::addArgs(&args, processArgs.toWindowsArgs());
+        QTC_ASSERT(commandArgs.size() == 1, return false);
+        ProcessArgs::addArgs(&args, commandArgs);
         m_setup.m_nativeArguments = args;
         // Note: Arguments set with setNativeArgs will be appended to the ones
         // passed with start() below.
         *arguments = {};
     } else {
-        if (!success) {
-            const ProcessResultData result = {0,
-                                              QProcess::NormalExit,
-                                              QProcess::FailedToStart,
-                                              Tr::tr("Error in command line.")};
-            emit done(result);
-            return false;
-        }
-        *arguments = processArgs.toUnixArgs();
+        *arguments = commandArgs;
     }
     *program = commandString;
     return true;
