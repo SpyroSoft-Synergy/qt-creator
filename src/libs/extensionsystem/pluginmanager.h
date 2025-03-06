@@ -22,6 +22,11 @@ class PluginSpec;
 
 namespace Internal { class PluginManagerPrivate; }
 
+enum class LoadOption {
+    NO_LOAD,
+    LOAD,
+};
+
 class EXTENSIONSYSTEM_EXPORT PluginManager : public QObject
 {
     Q_OBJECT
@@ -152,6 +157,11 @@ public:
 
     void setAcceptTermsAndConditionsCallback(const std::function<bool(PluginSpec *)> &callback);
     void setTermsAndConditionsAccepted(PluginSpec *spec);
+
+    static QList<std::pair<QString, LoadOption>> loadOptions();
+
+    static void forceDisableSpec(PluginSpec *spec);
+    static void forceEnableSpec(PluginSpec *spec);
 
 signals:
     void objectAdded(QObject *obj);

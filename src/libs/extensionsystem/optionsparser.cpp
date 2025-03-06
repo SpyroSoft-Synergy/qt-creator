@@ -174,6 +174,8 @@ bool OptionsParser::checkForLoadOption()
     if (m_currentArg != QLatin1String(LOAD_OPTION))
         return false;
     if (nextToken(RequiredToken)) {
+        m_pmPrivate->m_loadOptions << std::make_pair(m_currentArg, LoadOption::LOAD);
+
         if (m_currentArg == QLatin1String("all")) {
             for (PluginSpec *spec : std::as_const(m_pmPrivate->pluginSpecs))
                 spec->setForceEnabled(true);
@@ -181,9 +183,7 @@ bool OptionsParser::checkForLoadOption()
         } else {
             PluginSpec *spec = m_pmPrivate->pluginById(m_currentArg.toLower());
             if (!spec) {
-                if (m_errorString)
-                    *m_errorString = Tr::tr("The plugin \"%1\" does not exist.").arg(m_currentArg);
-                m_hasError = true;
+                qWarning() << Tr::tr("The plugin \"%1\" does not exist.").arg(m_currentArg);
             } else {
                 spec->setForceEnabled(true);
                 m_isDependencyRefreshNeeded = true;
@@ -199,6 +199,8 @@ bool OptionsParser::checkForNoLoadOption()
     if (m_currentArg != QLatin1String(NO_LOAD_OPTION))
         return false;
     if (nextToken(RequiredToken)) {
+        m_pmPrivate->m_loadOptions << std::make_pair(m_currentArg, LoadOption::NO_LOAD);
+
         if (m_currentArg == QLatin1String("all")) {
             for (PluginSpec *spec : std::as_const(m_pmPrivate->pluginSpecs))
                 spec->setForceDisabled(true);
@@ -206,9 +208,7 @@ bool OptionsParser::checkForNoLoadOption()
         } else {
             PluginSpec *spec = m_pmPrivate->pluginById(m_currentArg.toLower());
             if (!spec) {
-                if (m_errorString)
-                    *m_errorString = Tr::tr("The plugin \"%1\" does not exist.").arg(m_currentArg);
-                m_hasError = true;
+                qWarning() << Tr::tr("The plugin \"%1\" does not exist.").arg(m_currentArg);
             } else {
                 spec->setForceDisabled(true);
                 // recursively disable all plugins that require this plugin

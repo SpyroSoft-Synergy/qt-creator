@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "pluginspec.h"
 #include "pluginmanager.h"
+#include "pluginspec.h"
 
 #include <utils/algorithm.h>
 
@@ -74,6 +74,9 @@ public:
 
     void removePluginsAfterRestart();
     void installPluginsAfterRestart();
+
+    void forceDisableSpec(PluginSpec *spec);
+    void forceEnableSpec(PluginSpec *spec);
 
     Utils::Result removePluginOnRestart(const QString &pluginId);
     void installPluginOnRestart(const Utils::FilePath &src, const Utils::FilePath &dest);
@@ -149,6 +152,8 @@ public:
     QWaitCondition m_scenarioWaitCondition;
 
     PluginManager::ProcessData m_creatorProcessData;
+
+    QList<std::pair<QString, LoadOption>> m_loadOptions;
 
 private:
     PluginManager *q;

@@ -2296,4 +2296,28 @@ void PluginManager::setTermsAndConditionsAccepted(PluginSpec *spec)
     }
 }
 
-} // ExtensionSystem
+QList<std::pair<QString, LoadOption>> PluginManager::loadOptions()
+{
+    return d->m_loadOptions;
+}
+
+void PluginManager::forceDisableSpec(PluginSpec *spec)
+{
+    d->forceDisableSpec(spec);
+}
+
+void PluginManager::forceEnableSpec(PluginSpec *spec)
+{
+    d->forceEnableSpec(spec);
+}
+
+void Internal::PluginManagerPrivate::forceDisableSpec(PluginSpec *spec)
+{
+    spec->setForceDisabled(true);
+}
+void Internal::PluginManagerPrivate::forceEnableSpec(PluginSpec *spec)
+{
+    spec->setForceEnabled(true);
+}
+
+} // namespace ExtensionSystem

@@ -453,6 +453,26 @@ public:
         }
 
         PluginManager::addPlugins({plugins.begin(), plugins.end()});
+
+        for (const auto &[id, loadOption] : PluginManager::loadOptions()) {
+            if (id == "all") {
+                for (auto spec : plugins) {
+                    if (loadOption == LoadOption::NO_LOAD)
+                        PluginManager::forceDisableSpec(spec);
+                    else
+                        PluginManager::forceEnableSpec(spec);
+                }
+                continue;
+            }
+
+            if (auto spec = Utils::findOrDefault(plugins, Utils::equal(&PluginSpec::id, id))) {
+                if (loadOption == LoadOption::NO_LOAD)
+                    PluginManager::forceDisableSpec(spec);
+                else
+                    PluginManager::forceEnableSpec(spec);
+            }
+        }
+
         PluginManager::loadPluginsAtRuntime(plugins);
     }
 
