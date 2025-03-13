@@ -124,7 +124,7 @@ utils.OpenModeFlag = {
     NotOpen = 0x0000,
     ReadOnly = 0x0001,
     WriteOnly = 0x0002,
-    ReadWrite = ReadOnly | WriteOnly,
+    ReadWrite = utils.OpenModeFlag.ReadOnly | utils.OpenModeFlag.WriteOnly,
     Append = 0x0004,
     Truncate = 0x0008,
     Text = 0x0010,
@@ -145,6 +145,11 @@ function utils.FileSaver.finalize() end
 ---@param len Length of the data buffer
 ---@return boolean true if success, false otherwise.
 function utils.FileSaver.write(data, len) end
+
+---Write raw data to the file
+---@param bytes QByteArray to raw data buffer
+---@return boolean true if success, false otherwise.
+function utils.FileSaver.write(bytes) end
 
 ---@class CommandLine
 ---@field command FilePath The command to execute.

@@ -235,17 +235,20 @@ void setupUtilsModule()
                 "FileSaver",
                 sol::meta_function::construct,
                 sol::factories(
-                     [](const FilePath &path, QIODeviceBase::OpenModeFlag mode) -> std::shared_ptr<FileSaver> {
-                        return std::make_shared<FileSaver>(path, mode);
-                     },
-                     [](sol::object, const FilePath &path, QIODeviceBase::OpenModeFlag mode) -> std::shared_ptr<FileSaver> {
-                        return std::make_shared<FileSaver>(path, mode);
-                     }),
+                    [](const FilePath &path, QIODeviceBase::OpenModeFlag mode) -> std::unique_ptr<FileSaver> {
+                    return std::make_unique<FileSaver>(path, mode);
+                    },
+                    [](sol::object, const FilePath &path, QIODeviceBase::OpenModeFlag mode) -> std::unique_ptr<FileSaver> {
+                    return std::make_unique<FileSaver>(path, mode);
+                    }),
                 "finalize", [](FileSaver& fs){
                     return fs.finalize();
                 },
                 "write", [](FileSaver& fs, const char *data, int len) {
-                    fs.write(data, len);
+                    return fs.write(data, len);
+                },
+                "write", [](FileSaver& fs, const QByteArray &bytes) {
+                    return fs.write(bytes);
                 }
             );
 
