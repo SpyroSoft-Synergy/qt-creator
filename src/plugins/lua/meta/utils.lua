@@ -141,15 +141,9 @@ utils.FileSaver = {}
 function utils.FileSaver.finalize() end
 
 ---Write raw data to the file
----@param data Pointer to raw data buffer
----@param len Length of the data buffer
+---@param dataStr string data string to write to file.
 ---@return boolean true if success, false otherwise.
-function utils.FileSaver.write(data, len) end
-
----Write raw data to the file
----@param bytes QByteArray to raw data buffer
----@return boolean true if success, false otherwise.
-function utils.FileSaver.write(bytes) end
+function utils.FileSaver.write(dataStr) end
 
 ---@class CommandLine
 ---@field command FilePath The command to execute.
