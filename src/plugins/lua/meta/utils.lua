@@ -121,16 +121,16 @@ function utils.writableLocation(location) end
 
 ---@enum OpenModeFlag
 utils.OpenModeFlag = {
-    NotOpen = 0x0000,
-    ReadOnly = 0x0001,
-    WriteOnly = 0x0002,
-    ReadWrite = utils.OpenModeFlag.ReadOnly | utils.OpenModeFlag.WriteOnly,
-    Append = 0x0004,
-    Truncate = 0x0008,
-    Text = 0x0010,
-    Unbuffered = 0x0020,
-    NewOnly = 0x0040,
-    ExistingOnly = 0x0080
+    NotOpen = 0,
+    ReadOnly = 0,
+    WriteOnly = 0,
+    ReadWrite = 0,
+    Append = 0,
+    Truncate = 0,
+    Text = 0,
+    Unbuffered = 0,
+    NewOnly = 0,
+    ExistingOnly = 0
 };
 
 ---@class FileSaver
