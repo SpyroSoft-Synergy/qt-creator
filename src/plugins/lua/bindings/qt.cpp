@@ -38,6 +38,10 @@ void setupQtModule()
             sol::property(
                 &QCompleter::completionMode,
                 [](QCompleter *c, QCompleter::CompletionMode mode) { c->setCompletionMode(mode); }),
+            "maxVisibleItems",
+            sol::property(
+                &QCompleter::maxVisibleItems,
+                &QCompleter::setMaxVisibleItems),
             "onActivated",
             sol::property([guard = pluginSpec](QCompleter &obj, sol::main_function callback) {
                 QObject::connect(
