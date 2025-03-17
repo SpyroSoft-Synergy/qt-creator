@@ -105,6 +105,10 @@ function utils.FilePath:permissions() end
 ---@param permissions Permission The complete OR-ed together combination of permissions for the file.
 function utils.FilePath:setPermissions() end
 
+---Creates a directory
+---@return boolean
+function utils.FilePath:createDir() end
+
 ---Returns the list of paths for the given standard location.
 ---@param location StandardLocation The standard location to get paths for.
 ---@return [FilePath] The list of paths for the given standard location.
@@ -119,6 +123,32 @@ function utils.standardLocation(location) end
 ---@param location StandardLocation The standard location to get path for.
 ---@return FilePath|nil The writable paths for the given standard location or nil if no writable location is available.
 function utils.writableLocation(location) end
+
+---@enum OpenModeFlag
+utils.OpenModeFlag = {
+    NotOpen = 0,
+    ReadOnly = 0,
+    WriteOnly = 0,
+    ReadWrite = 0,
+    Append = 0,
+    Truncate = 0,
+    Text = 0,
+    Unbuffered = 0,
+    NewOnly = 0,
+    ExistingOnly = 0
+};
+
+---@class FileSaver
+utils.FileSaver = {}
+
+---Write the target file to the filesystem
+---@return boolean true if success, false otherwise.
+function utils.FileSaver.finalize() end
+
+---Write raw data to the file
+---@param dataStr string data string to write to file.
+---@return boolean true if success, false otherwise.
+function utils.FileSaver.write(dataStr) end
 
 ---@class CommandLine
 ---@field command FilePath The command to execute.
