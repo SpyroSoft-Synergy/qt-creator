@@ -104,6 +104,15 @@ function utils.FilePath:setPermissions() end
 ---@return boolean
 function utils.FilePath:createDir() end
 
+---Wrtite a string data to the file
+---@param str string The file contents as string
+---@return boolean
+function utils.FilePath:writeFileContents(str) end
+
+---Creates a temporary file
+---@return FilePath or nil
+function utils.FilePath:createTempFile() end
+
 ---Returns the list of paths for the given standard location.
 ---@param location StandardLocation The standard location to get paths for.
 ---@return [FilePath] The list of paths for the given standard location.

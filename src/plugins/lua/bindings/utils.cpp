@@ -182,6 +182,24 @@ void setupUtilsModule()
                 "setPermissions",
                 [](FilePath& p, QFileDevice::Permission permissions) {
                     p.setPermissions(static_cast<QFile::Permissions>(permissions));
+                },
+                "writeFileContents",
+                [](FilePath& p, const std::string& str) -> bool {
+                    auto result = p.writeFileContents({str.data(), str.length()});
+                    if (result.has_value() && result.value() == str.length()) {
+                        return true;
+                    } else {
+                        return false;
+                    }
+                },
+                "createTempFile",
+                [](const FilePath& p) -> std::optional<FilePath> {
+                    auto tmpPath = p.createTempFile();
+                    if (tmpPath) {
+                        return {tmpPath.value()};
+                    } else {
+                        return {};
+                    }
                 });
 
             utils["FilePath"]["dirEntries_cb"] = utils["__dirEntries_cb__"];
