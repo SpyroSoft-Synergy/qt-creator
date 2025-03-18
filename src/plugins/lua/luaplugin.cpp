@@ -51,6 +51,7 @@ const char ACTION_NEW_SCRIPT[] = "Lua.NewScript";
 void setupActionModule();
 void setupCoreModule();
 void setupFetchModule();
+void setupFileDialogModule();
 void setupGuiModule();
 void setupHookModule();
 void setupInstallModule();
@@ -303,6 +304,7 @@ public:
         setupActionModule();
         setupCoreModule();
         setupFetchModule();
+        setupFileDialogModule();
         setupGuiModule();
         setupHookModule();
         setupInstallModule();
