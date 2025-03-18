@@ -28,6 +28,7 @@ class QLabel;
 class QLayout;
 class QMargins;
 class QObject;
+class QProgressBar;
 class QPushButton;
 class QSpinBox;
 class QSplitter;
