@@ -32,6 +32,7 @@
 #include <debugger/analyzer/analyzerutils.h>
 
 #include <projectexplorer/buildconfiguration.h>
+#include <projectexplorer/buildsystem.h>
 #include <projectexplorer/deploymentdata.h>
 #include <projectexplorer/devicesupport/devicekitaspects.h>
 #include <projectexplorer/devicesupport/devicemanager.h>
@@ -100,8 +101,6 @@ public:
     void stop() final;
 
 private:
-    void addToolArguments(CommandLine &cmd) const final;
-
     void startDebugger(qint64 valgrindPid);
 
     const bool m_withGdb;
@@ -140,29 +139,6 @@ void MemcheckToolRunner::stop()
 {
     m_process.reset();
     ValgrindToolRunner::stop();
-}
-
-void MemcheckToolRunner::addToolArguments(CommandLine &cmd) const
-{
-    cmd << "--tool=memcheck" << "--gen-suppressions=all";
-
-    if (m_settings.trackOrigins())
-        cmd << "--track-origins=yes";
-
-    if (m_settings.showReachable())
-        cmd << "--show-reachable=yes";
-
-    cmd << "--leak-check=" + m_settings.leakCheckOnFinishOptionString();
-
-    for (const FilePath &file : m_settings.suppressions())
-        cmd << QString("--suppressions=%1").arg(file.path());
-
-    cmd << QString("--num-callers=%1").arg(m_settings.numCallers());
-
-    if (m_withGdb)
-        cmd << "--vgdb=yes" << "--vgdb-error=0";
-
-    cmd.addArgs(m_settings.memcheckArguments(), CommandLine::Raw);
 }
 
 void MemcheckToolRunner::startDebugger(qint64 valgrindPid)
@@ -274,16 +250,16 @@ bool MemcheckErrorFilterProxyModel::filterAcceptsRow(int sourceRow, const QModel
         // assume this error was created by an external library
         QSet<QString> validFolders;
         for (Project *project : ProjectManager::projects()) {
-            validFolders << project->projectDirectory().toUrlishString();
-            const QList<Target *> targets = project->targets();
-            for (const Target *target : targets) {
-                const QList<DeployableFile> files = target->deploymentData().allFiles();
-                for (const DeployableFile &file : files) {
-                    if (file.isExecutable())
-                        validFolders << file.remoteDirectory();
+            validFolders << project->projectDirectory().path();
+            for (const Target *target : project->targets()) {
+                for (const BuildConfiguration *bc : target->buildConfigurations()) {
+                    const QList<DeployableFile> files = bc->buildSystem()->deploymentData().allFiles();
+                    for (const DeployableFile &file : files) {
+                        if (file.isExecutable())
+                            validFolders << file.remoteDirectory();
+                    }
+                    validFolders << bc->buildDirectory().path();
                 }
-                for (BuildConfiguration *config : target->buildConfigurations())
-                    validFolders << config->buildDirectory().toUrlishString();
             }
         }
 
@@ -1098,14 +1074,36 @@ MemcheckToolRunner::MemcheckToolRunner(RunControl *runControl)
         connect(&m_runner, &ValgrindProcess::valgrindStarted,
                 this, &MemcheckToolRunner::startDebugger);
         connect(&m_runner, &ValgrindProcess::logMessageReceived,
-                this, [this](const QByteArray &data) {
-            appendMessage(QString::fromUtf8(data), Utils::StdOutFormat);
+                this, [runControl](const QByteArray &data) {
+            runControl->postMessage(QString::fromUtf8(data), Utils::StdOutFormat);
         });
     } else {
         connect(&m_runner, &ValgrindProcess::internalError, dd, &MemcheckTool::internalParserError);
     }
 
     dd->setupRunControl(runControl, m_settings.suppressions());
+
+    CommandLine cmd = defaultValgrindCommand(runControl, m_settings);
+    cmd << "--tool=memcheck" << "--gen-suppressions=all";
+
+    if (m_settings.trackOrigins())
+        cmd << "--track-origins=yes";
+
+    if (m_settings.showReachable())
+        cmd << "--show-reachable=yes";
+
+    cmd << "--leak-check=" + m_settings.leakCheckOnFinishOptionString();
+
+    for (const FilePath &file : m_settings.suppressions())
+        cmd << QString("--suppressions=%1").arg(file.path());
+
+    cmd << QString("--num-callers=%1").arg(m_settings.numCallers());
+
+    if (m_withGdb)
+        cmd << "--vgdb=yes" << "--vgdb-error=0";
+
+    cmd.addArgs(m_settings.memcheckArguments(), CommandLine::Raw);
+    setValgrindCommand(cmd);
 }
 
 const char heobProfileC[] = "Heob/Profile";

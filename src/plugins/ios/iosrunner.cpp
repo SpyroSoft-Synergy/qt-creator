@@ -869,7 +869,7 @@ IosRunWorkerFactory::IosRunWorkerFactory()
             if (IosDeviceManager::isDeviceCtlOutputSupported())
                 return new DeviceCtlRunner(control);
             // TODO Remove the polling runner when we decide not to support iOS 17+ devices
-            // with Xcode < 15.4 at all
+            // with Xcode < 16 at all
             return new DeviceCtlPollingRunner(control);
         }
         control->setIcon(Icons::RUN_SMALL_TOOLBAR);
@@ -909,7 +909,7 @@ static void startDebugger(RunControl *runControl, DebuggerRunTool *debugger,
             debugger->appendMessage(msgOnlyCppDebuggingSupported(),
                                     OutputFormat::LogMessageFormat, true);
         }
-        rp.setAttachPid(deviceCtlRunner->processIdentifier());
+        runControl->setAttachPid(ProcessHandle(deviceCtlRunner->processIdentifier()));
         rp.setInferiorExecutable(data->localExecutable);
         return;
     }
@@ -921,7 +921,7 @@ static void startDebugger(RunControl *runControl, DebuggerRunTool *debugger,
 
     const Port gdbServerPort = iosRunner->gdbServerPort();
     const Port qmlServerPort = iosRunner->qmlServerPort();
-    rp.setAttachPid(iosRunner->pid());
+    runControl->setAttachPid(ProcessHandle(iosRunner->pid()));
 
     const bool cppDebug = rp.isCppDebugging();
     const bool qmlDebug = rp.isQmlDebugging();

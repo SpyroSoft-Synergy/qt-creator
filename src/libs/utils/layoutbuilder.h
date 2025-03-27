@@ -5,6 +5,7 @@
 
 #include "builderutils.h"
 
+#include <QAction>
 #include <QString>
 
 #include <initializer_list>
@@ -38,6 +39,7 @@ class QStackedWidget;
 class QTabWidget;
 class QTextEdit;
 class QToolBar;
+class QToolButton;
 class QVBoxLayout;
 class QWidget;
 QT_END_NAMESPACE
@@ -435,6 +437,17 @@ public:
     ToolBar(std::initializer_list<I> items);
 };
 
+class QTCREATOR_UTILS_EXPORT ToolButton : public Widget
+{
+public:
+    using Implementation = QToolButton;
+    using I = Building::BuilderItem<ToolButton>;
+
+    ToolButton(std::initializer_list<I> items);
+
+    void setDefaultAction(QAction *action);
+};
+
 class QTCREATOR_UTILS_EXPORT Spinner : public Widget
 {
 public:
@@ -460,6 +473,7 @@ public:
     void setMarkdown(const QString &);
     void setBasePath(const Utils::FilePath &);
     void setEnableCodeCopyButton(bool enable);
+    void setViewportMargins(int left, int top, int right, int bottom);
 };
 
 // Special

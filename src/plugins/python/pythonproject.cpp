@@ -18,12 +18,12 @@ using namespace Utils;
 namespace Python::Internal {
 
 PythonProject::PythonProject(const FilePath &fileName)
-    : Project(Constants::C_PY_PROJECT_MIME_TYPE, fileName)
+    : Project(Constants::C_PY_PROJECT_MIME_TYPE_TOML, fileName)
 {
     setId(PythonProjectId);
     setProjectLanguages(Context(ProjectExplorer::Constants::PYTHON_LANGUAGE_ID));
     setDisplayName(fileName.completeBaseName());
-    setBuildSystemCreator<PythonBuildSystem>();
+    setBuildSystemCreator<PythonBuildSystem>("python");
 }
 
 PythonProjectNode::PythonProjectNode(const FilePath &path)
@@ -45,4 +45,4 @@ QString PythonFileNode::displayName() const
     return m_displayName;
 }
 
-} // Python::Internal
+} // namespace Python::Internal

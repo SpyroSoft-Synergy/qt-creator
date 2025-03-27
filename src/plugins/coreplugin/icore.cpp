@@ -1128,6 +1128,11 @@ static void setRestart(bool restart)
     qApp->setProperty("restart", restart);
 }
 
+static bool isRestartRequested()
+{
+    return qApp->property("restart").toBool();
+}
+
 /*!
     Restarts \QC and restores the last session.
 */
@@ -1290,9 +1295,6 @@ QString ICore::aboutInformationCompact()
 */
 QString ICore::aboutInformationHtml()
 {
-    const QString buildCompatibilityString = Tr::tr("Based on Qt %1 (%2, %3)")
-                                                 .arg(QLatin1String(qVersion()), compilerString(),
-                                                      QSysInfo::buildCpuArchitecture());
     const AppInfo &appInfo = Utils::appInfo();
     QString ideRev;
     if (!appInfo.revision.isEmpty())
@@ -1301,10 +1303,21 @@ QString ICore::aboutInformationHtml()
                               ? appInfo.revision
                               : QString::fromLatin1("<a href=\"%1\">%2</a>")
                                     .arg(appInfo.revisionUrl, appInfo.revision));
-    QString buildDateInfo;
+    QString buildInfo;
 #ifdef QTC_SHOW_BUILD_DATE
-    buildDateInfo = Tr::tr("<br/>Built on %1 %2<br/>").arg(QLatin1String(__DATE__),
-                                                           QLatin1String(__TIME__));
+    //: Built on <date> <time> based on Qt <version> (<compiler>, <arch>)
+    buildInfo = Tr::tr("Built on %1 %2 based on Qt %3 (%4, %5)")
+                    .arg(
+                        QLatin1String(__DATE__),
+                        QLatin1String(__TIME__),
+                        QLatin1String(qVersion()),
+                        compilerString(),
+                        QSysInfo::buildCpuArchitecture());
+#else
+    buildInfo
+        //: Based on Qt <version> (<compiler>, <arch>)
+        = Tr::tr("Based on Qt %1 (%2, %3)")
+              .arg(QLatin1String(qVersion()), compilerString(), QSysInfo::buildCpuArchitecture());
 #endif
 
     static const QString br = QLatin1String("<br/>");
@@ -1316,12 +1329,10 @@ QString ICore::aboutInformationHtml()
                   "%2"
                   "%3"
                   "%4"
-                  "%5"
-                  "%6")
+                  "%5")
               .arg(
                   ICore::versionString(),
-                  buildCompatibilityString + br,
-                  buildDateInfo,
+                  wrapBr(buildInfo),
                   ideRev,
                   wrapBr(additionalInfo),
                   wrapBr(appInfo.copyright))
@@ -1546,7 +1557,7 @@ void ICore::aboutToShutdown()
 {
     disconnect(qApp, &QApplication::focusChanged, d, &ICorePrivate::updateFocusWidget);
     for (auto contextsPair : d->m_contextWidgets) {
-        for (auto context : contextsPair.second)
+        for (auto context : std::as_const(contextsPair.second))
             disconnect(context, &QObject::destroyed, d->m_mainwindow, nullptr);
     }
     d->m_activeContext.clear();
@@ -1575,12 +1586,13 @@ void MainWindow::closeEvent(QCloseEvent *event)
         return;
     }
 
-    if (systemSettings().askBeforeExit()
-        && (QMessageBox::question(this,
-                                  Tr::tr("Exit %1?").arg(QGuiApplication::applicationDisplayName()),
-                                  Tr::tr("Exit %1?").arg(QGuiApplication::applicationDisplayName()),
-                                  QMessageBox::Yes | QMessageBox::No,
-                                  QMessageBox::No)
+    if (systemSettings().askBeforeExit() && !isRestartRequested()
+        && (QMessageBox::question(
+                this,
+                Tr::tr("Exit %1?").arg(QGuiApplication::applicationDisplayName()),
+                Tr::tr("Exit %1?").arg(QGuiApplication::applicationDisplayName()),
+                QMessageBox::Yes | QMessageBox::No,
+                QMessageBox::No)
             == QMessageBox::No)) {
         event->ignore();
         return;
@@ -2531,7 +2543,7 @@ void ICorePrivate::changeLog()
 
     auto versionCombo = new QComboBox;
     versionCombo->setMinimumWidth(80);
-    for (const VersionFilePair &f : versionedFiles)
+    for (const VersionFilePair &f : std::as_const(versionedFiles))
         versionCombo->addItem(f.first.toString());
     dialog = new LogDialog(ICore::dialogParent());
     auto showInExplorer = new QPushButton(FileUtils::msgGraphicalShellAction());

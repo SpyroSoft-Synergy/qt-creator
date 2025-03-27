@@ -13,6 +13,10 @@
 #include "pythontr.h"
 #include "pythonwizardpage.h"
 
+#ifdef WITH_TESTS
+#include "tests/pyprojecttoml_test.h"
+#endif // WITH_TESTS
+
 #include <extensionsystem/iplugin.h>
 
 #include <projectexplorer/buildtargetinfo.h>
@@ -72,6 +76,9 @@ class PythonPlugin final : public ExtensionSystem::IPlugin
 
     void initialize() final
     {
+#ifdef WITH_TESTS
+        addTestCreator(createPyProjectTomlTest);
+#endif
         Core::IOptionsPage::registerCategory(
             Constants::C_PYTHON_SETTINGS_CATEGORY,
             Tr::tr("Python"),
@@ -92,8 +99,8 @@ class PythonPlugin final : public ExtensionSystem::IPlugin
 
         setupPipSupport(this);
 
-        KitManager::setIrrelevantAspects(KitManager::irrelevantAspects()
-                                         + QSet<Id>{PythonKitAspect::id()});
+        KitManager::setIrrelevantAspects(
+            KitManager::irrelevantAspects() + QSet<Id>{PythonKitAspect::id()});
 
         const auto issuesGenerator = [](const Kit *k) -> Tasks {
             if (!PythonKitAspect::python(k))
@@ -106,6 +113,8 @@ class PythonPlugin final : public ExtensionSystem::IPlugin
             Constants::C_PY_PROJECT_MIME_TYPE, issuesGenerator);
         ProjectManager::registerProjectType<PythonProject>(
             Constants::C_PY_PROJECT_MIME_TYPE_LEGACY, issuesGenerator);
+        ProjectManager::registerProjectType<PythonProject>(
+            Constants::C_PY_PROJECT_MIME_TYPE_TOML, issuesGenerator);
 
         auto oldHighlighter = Utils::Text::codeHighlighter();
         Utils::Text::setCodeHighlighter(
@@ -134,6 +143,6 @@ class PythonPlugin final : public ExtensionSystem::IPlugin
     }
 };
 
-} // Python::Internal
+} // namespace Python::Internal
 
 #include "pythonplugin.moc"

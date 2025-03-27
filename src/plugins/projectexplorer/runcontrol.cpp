@@ -5,6 +5,7 @@
 
 #include "appoutputpane.h"
 #include "buildconfiguration.h"
+#include "buildsystem.h"
 #include "customparser.h"
 #include "devicesupport/devicekitaspects.h"
 #include "devicesupport/devicemanager.h"
@@ -112,7 +113,7 @@ void RunWorkerFactory::addSupportForLocalRunConfigs()
 
 void RunWorkerFactory::cloneProduct(Id exitstingStepId, Id overrideId)
 {
-    for (RunWorkerFactory *factory : g_runWorkerFactories) {
+    for (RunWorkerFactory *factory : std::as_const(g_runWorkerFactories)) {
         if (factory->m_id == exitstingStepId) {
             m_producer = factory->m_producer;
             // Other bits are intentionally not copied as they are unlikely to be
@@ -274,7 +275,7 @@ public:
     FilePath buildDirectory;
     Environment buildEnvironment;
     Kit *kit = nullptr; // Not owned.
-    QPointer<Target> target; // Not owned.
+    QPointer<BuildConfiguration> buildConfiguration; // Not owned.
     QPointer<Project> project; // Not owned.
     std::function<bool(bool*)> promptToStop;
     std::vector<RunWorkerFactory> m_factories;
@@ -285,7 +286,6 @@ public:
     QList<QPointer<RunWorker>> m_workers;
     RunControlState state = RunControlState::Initialized;
     bool printEnvironment = false;
-    bool autoDelete = false;
     bool m_supportsReRunning = true;
     std::optional<Group> m_runRecipe;
 
@@ -297,6 +297,7 @@ public:
     QUrl qmlChannel;
     QUrl perfChannel;
     QUrl workerChannel;
+    Utils::ProcessHandle m_attachPid;
 };
 
 class RunControlPrivate : public QObject, public RunControlPrivateData
@@ -309,8 +310,7 @@ public:
     {
         icon = Icons::RUN_SMALL_TOOLBAR;
         connect(&m_taskTreeRunner, &TaskTreeRunner::aboutToStart, q, &RunControl::started);
-        connect(&m_taskTreeRunner, &TaskTreeRunner::done,
-                this, &RunControlPrivate::checkAutoDeleteAndEmitStopped);
+        connect(&m_taskTreeRunner, &TaskTreeRunner::done, this, &RunControlPrivate::emitStopped);
     }
 
     ~RunControlPrivate() override
@@ -349,7 +349,7 @@ public:
     static bool isAllowedTransition(RunControlState from, RunControlState to);
     bool isUsingTaskTree() const { return bool(m_runRecipe); }
     void startTaskTree();
-    void checkAutoDeleteAndEmitStopped();
+    void emitStopped();
 
     bool isPortsGatherer() const
     { return useDebugChannel || useQmlChannel || usePerfChannel || useWorkerChannel; }
@@ -399,28 +399,26 @@ void RunControl::copyDataFromRunConfiguration(RunConfiguration *runConfig)
     d->aspectData = runConfig->aspectData();
     d->printEnvironment = runConfig->isPrintEnvironmentEnabled();
 
-    setTarget(runConfig->target());
+    setBuildConfiguration(runConfig->buildConfiguration());
 
     d->macroExpander = runConfig->macroExpander();
 }
 
-void RunControl::setTarget(Target *target)
+void RunControl::setBuildConfiguration(BuildConfiguration *bc)
 {
-    QTC_ASSERT(target, return);
-    QTC_CHECK(!d->target);
-    d->target = target;
+    QTC_ASSERT(bc, return);
+    QTC_CHECK(!d->buildConfiguration);
+    d->buildConfiguration = bc;
 
-    if (!d->buildKey.isEmpty() && target->buildSystem())
-        d->buildTargetInfo = target->buildTarget(d->buildKey);
+    if (!d->buildKey.isEmpty())
+        d->buildTargetInfo = bc->buildSystem()->buildTarget(d->buildKey);
 
-    if (auto bc = target->activeBuildConfiguration()) {
-        d->buildDirectory = bc->buildDirectory();
-        d->buildEnvironment = bc->environment();
-    }
+    d->buildDirectory = bc->buildDirectory();
+    d->buildEnvironment = bc->environment();
 
-    setKit(target->kit());
-    d->macroExpander = target->macroExpander();
-    d->project = target->project();
+    setKit(bc->kit());
+    d->macroExpander = bc->macroExpander();
+    d->project = bc->project();
 }
 
 void RunControl::setKit(Kit *kit)
@@ -471,11 +469,6 @@ RunControl::~RunControl()
 #endif
 }
 
-void RunControl::setAutoDeleteOnStop(bool autoDelete)
-{
-    d->autoDelete = autoDelete;
-}
-
 void RunControl::setRunRecipe(const Group &group)
 {
     d->m_runRecipe = group;
@@ -503,7 +496,7 @@ void RunControl::initiateStop()
 {
     if (d->isUsingTaskTree()) {
         d->m_taskTreeRunner.reset();
-        d->checkAutoDeleteAndEmitStopped();
+        d->emitStopped();
     } else {
         d->initiateStop();
     }
@@ -513,7 +506,7 @@ void RunControl::forceStop()
 {
     if (d->isUsingTaskTree()) {
         d->m_taskTreeRunner.reset();
-        emit stopped();
+        d->emitStopped();
     } else {
         d->forceStop();
     }
@@ -594,7 +587,7 @@ void RunControlPrivate::startPortsGathererIfNeededAndContinueStart()
         return;
     }
 
-    QTC_ASSERT(device, continueStart(); return);
+    QTC_ASSERT(device, initiateStop(); return);
 
     const Storage<PortsOutputData> portsStorage;
 
@@ -633,11 +626,12 @@ void RunControlPrivate::startPortsGathererIfNeededAndContinueStart()
 QUrl RunControlPrivate::getNextChannel(PortList *portList, const QList<Port> &usedPorts)
 {
     QUrl result;
-    result.setScheme(urlTcpScheme());
-    if (q->device()->extraData(Constants::SSH_FORWARD_DEBUGSERVER_PORT).toBool())
+    if (q->device()->extraData(Constants::SSH_FORWARD_DEBUGSERVER_PORT).toBool()) {
+        result.setScheme(urlTcpScheme());
         result.setHost("localhost");
-    else
-        result.setHost(q->device()->toolControlChannel(IDevice::ControlChannelHint()).host());
+    } else {
+        result = q->device()->toolControlChannel(IDevice::ControlChannelHint());
+    }
     result.setPort(portList->getNextFreePort(usedPorts).number());
     return result;
 }
@@ -700,6 +694,16 @@ void RunControl::requestWorkerChannel()
 QUrl RunControl::workerChannel() const
 {
     return d->workerChannel;
+}
+
+void RunControl::setAttachPid(ProcessHandle pid)
+{
+    d->m_attachPid = pid;
+}
+
+ProcessHandle RunControl::attachPid() const
+{
+    return d->m_attachPid;
 }
 
 void RunControl::showOutputPane()
@@ -1085,9 +1089,14 @@ IDevice::ConstPtr RunControl::device() const
    return d->device;
 }
 
+BuildConfiguration *RunControl::buildConfiguration() const
+{
+    return d->buildConfiguration;
+}
+
 Target *RunControl::target() const
 {
-    return d->target;
+    return buildConfiguration() ? buildConfiguration()->target() : nullptr;
 }
 
 Project *RunControl::project() const
@@ -1207,17 +1216,12 @@ void RunControlPrivate::startTaskTree()
     m_taskTreeRunner.start(*m_runRecipe);
 }
 
-void RunControlPrivate::checkAutoDeleteAndEmitStopped()
+void RunControlPrivate::emitStopped()
 {
     if (!q)
         return;
 
-    if (autoDelete) {
-        debugMessage("All finished. Deleting myself");
-        q->deleteLater();
-    } else {
-        q->setApplicationProcessHandle(Utils::ProcessHandle());
-    }
+    q->setApplicationProcessHandle(Utils::ProcessHandle());
     emit q->stopped();
 }
 
@@ -1324,7 +1328,7 @@ void RunControlPrivate::setState(RunControlState newState)
             emit q->started();
         break;
     case RunControlState::Stopped:
-        checkAutoDeleteAndEmitStopped();
+        emitStopped();
         break;
     default:
         break;
@@ -1535,8 +1539,8 @@ void ProcessRunnerPrivate::start()
     if (const auto rc = q->runControl()) {
         QString shellName = rc->displayName();
 
-        if (rc->target()) {
-            if (BuildConfiguration *buildConfig = rc->target()->activeBuildConfiguration())
+        if (rc->buildConfiguration()) {
+            if (BuildConfiguration *buildConfig = rc->buildConfiguration())
                 shellName += " - " + buildConfig->displayName();
         }
 
@@ -1815,6 +1819,7 @@ void RunWorker::initiateStop()
  */
 void RunWorker::reportStopped()
 {
+    QTC_ASSERT(d && d->runControl && d->runControl->d, return);
     d->runControl->d->onWorkerStopped(this);
     emit stopped();
 }
@@ -1956,22 +1961,45 @@ ProcessRunnerFactory::ProcessRunnerFactory(const QList<Id> &runConfigs)
     setSupportedRunConfigs(runConfigs);
 }
 
+Storage<RunInterface> runStorage()
+{
+    static Storage<RunInterface> theRunStorage;
+    return theRunStorage;
+}
+
+Canceler canceler()
+{
+    return [] { return std::make_pair(runStorage().activeStorage(), &RunInterface::canceled); };
+}
+
 void RecipeRunner::start()
 {
     QTC_CHECK(!m_taskTreeRunner.isRunning());
-    m_taskTreeRunner.start(m_recipe, {}, [this](DoneWith result) {
+
+    const auto onSetup = [this] {
+        connect(this, &RecipeRunner::canceled,
+                runStorage().activeStorage(), &RunInterface::canceled);
+        connect(runStorage().activeStorage(), &RunInterface::started,
+                this, &RecipeRunner::reportStarted);
+    };
+
+    const Group recipe {
+        runStorage(),
+        onGroupSetup(onSetup),
+        m_recipe
+    };
+
+    m_taskTreeRunner.start(recipe, {}, [this](DoneWith result) {
         if (result == DoneWith::Success)
             reportStopped();
         else
             reportFailure();
     });
-    reportStarted();
 }
 
 void RecipeRunner::stop()
 {
-    m_taskTreeRunner.cancel();
-    reportStopped();
+    emit canceled();
 }
 
 } // namespace ProjectExplorer

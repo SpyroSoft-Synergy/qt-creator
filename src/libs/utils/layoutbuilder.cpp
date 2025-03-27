@@ -30,6 +30,7 @@
 #include <QTabWidget>
 #include <QTextEdit>
 #include <QToolBar>
+#include <QToolButton>
 
 namespace Layouting {
 
@@ -1088,6 +1089,19 @@ ToolBar::ToolBar(std::initializer_list<I> ps)
     access(this)->setOrientation(Qt::Horizontal);
 }
 
+// ToolButton
+
+ToolButton::ToolButton(std::initializer_list<I> ps)
+{
+    ptr = new Implementation;
+    apply(this, ps);
+}
+
+void ToolButton::setDefaultAction(QAction *action)
+{
+    access(this)->setDefaultAction(action);
+}
+
 // TabWidget
 
 TabWidget::TabWidget(std::initializer_list<I> ps)
@@ -1132,6 +1146,11 @@ void MarkdownBrowser::setBasePath(const Utils::FilePath &path)
 void MarkdownBrowser::setEnableCodeCopyButton(bool enable)
 {
     access(this)->setEnableCodeCopyButton(enable);
+}
+
+void MarkdownBrowser::setViewportMargins(int left, int top, int right, int bottom)
+{
+    access(this)->setMargins(QMargins(left, top, right, bottom));
 }
 
 // Special If

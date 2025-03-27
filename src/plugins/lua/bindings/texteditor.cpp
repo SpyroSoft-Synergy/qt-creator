@@ -158,6 +158,15 @@ public:
 
                 emit currentEditorChanged(m_currentTextEditor);
             });
+        connect(
+            Core::EditorManager::instance(),
+            &Core::EditorManager::editorCreated,
+            this,
+            [this](Core::IEditor *editor) {
+                auto textEditor = qobject_cast<BaseTextEditor *>(editor);
+                if (textEditor)
+                    emit editorCreated(textEditor);
+            });
     }
 
     bool connectTextEditor(BaseTextEditor *editor)
@@ -191,6 +200,7 @@ public:
 
 signals:
     void currentEditorChanged(BaseTextEditor *editor);
+    void editorCreated(BaseTextEditor *editor);
     void documentContentsChanged(
         TextDocument *document, int position, int charsRemoved, int charsAdded);
 
@@ -391,7 +401,7 @@ void setupTextEditorModule()
         QObject::connect(guard, &QObject::destroyed, [activeMarkers] {
             for (const auto &[k, v] : activeMarkers->asKeyValueRange()) {
                 if (k) {
-                    for (const auto &id : v)
+                    for (const auto &id : std::as_const(v))
                         k->editorWidget()->clearRefactorMarkers(id);
                 }
             }
@@ -411,6 +421,13 @@ void setupTextEditorModule()
                std::variant<int, Position> position) {
                 QTC_ASSERT(textEditor, throw sol::error("TextEditor is not valid"));
                 return addEmbeddedWidget(textEditor, toWidget(widget), position);
+            },
+            "insertExtraToolBarWidget",
+            [](const TextEditorPtr &textEditor,
+               TextEditorWidget::Side side,
+               LayoutOrWidget widget) {
+                QTC_ASSERT(textEditor, throw sol::error("TextEditor is not valid"));
+                textEditor->editorWidget()->insertExtraToolBarWidget(side, toWidget(widget));
             },
             "setRefactorMarker",
             [pluginSpec, activeMarkers](
@@ -459,7 +476,26 @@ void setupTextEditorModule()
                     textEditor && textEditor->editorWidget(),
                     throw sol::error("TextEditor is not valid"));
                 return textEditor->editorWidget()->hasFocus();
+            },
+            "firstVisibleBlockNumber",
+            [](const TextEditorPtr &textEditor) -> int {
+                QTC_ASSERT(
+                    textEditor && textEditor->editorWidget(),
+                    throw sol::error("TextEditor is not valid"));
+                return textEditor->editorWidget()->firstVisibleBlockNumber();
+            },
+            "lastVisibleBlockNumber",
+            [](const TextEditorPtr &textEditor) -> int {
+                QTC_ASSERT(
+                    textEditor && textEditor->editorWidget(),
+                    throw sol::error("TextEditor is not valid"));
+                return textEditor->editorWidget()->lastVisibleBlockNumber();
             });
+
+        result["Side"] = lua.create_table_with(
+                "Left", TextEditorWidget::Left,
+                "Right", TextEditorWidget::Right
+            );
 
         result.new_usertype<TextSuggestion::Data>(
             "Suggestion",
@@ -542,6 +578,17 @@ void setupTextEditorModule()
             &TextEditorRegistry::currentEditorChanged,
             guard,
             [func](BaseTextEditor *editor) {
+                expected_str<void> res = void_safe_call(func, editor);
+                QTC_CHECK_EXPECTED(res);
+            });
+    });
+
+    registerHook("editors.text.editorCreated", [](sol::main_function func, QObject *guard) {
+        QObject::connect(
+            TextEditorRegistry::instance(),
+            &TextEditorRegistry::editorCreated,
+            guard,
+            [func](TextEditorPtr editor) {
                 expected_str<void> res = void_safe_call(func, editor);
                 QTC_CHECK_EXPECTED(res);
             });

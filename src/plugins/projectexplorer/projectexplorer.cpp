@@ -290,16 +290,16 @@ static std::optional<Environment> buildEnv(const Project *project)
     return {};
 }
 
-static const RunConfiguration *runConfigForNode(const Target *target, const ProjectNode *node)
+static const RunConfiguration *runConfigForNode(const BuildConfiguration *bc, const ProjectNode *node)
 {
     if (node && node->productType() == ProductType::App) {
         const QString buildKey = node->buildKey();
-        for (const RunConfiguration * const rc : target->runConfigurations()) {
+        for (const RunConfiguration * const rc : bc->runConfigurations()) {
             if (rc->buildKey() == buildKey)
                 return rc;
         }
     }
-    return target->activeRunConfiguration();
+    return bc->activeRunConfiguration();
 }
 
 static bool hideBuildMenu()
@@ -316,10 +316,10 @@ static bool canOpenTerminalWithRunEnv(const Project *project, const ProjectNode 
 {
     if (!project)
         return false;
-    const Target * const target = project->activeTarget();
-    if (!target)
+    const BuildConfiguration * const bc = project->activeBuildConfiguration();
+    if (!bc)
         return false;
-    const RunConfiguration * const runConfig = runConfigForNode(target, node);
+    const RunConfiguration * const runConfig = runConfigForNode(bc, node);
     if (!runConfig)
         return false;
     IDevice::ConstPtr device
@@ -896,6 +896,9 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
             dd, &ProjectExplorerPluginPrivate::updateWelcomePage);
     connect(SessionManager::instance(), &SessionManager::sessionRemoved,
             dd, &ProjectExplorerPluginPrivate::updateWelcomePage);
+    connect(&dd->m_projectTree, &ProjectTree::currentProjectChanged, sessionManager, [sessionManager] {
+        emit sessionManager->currentBuildConfigurationChanged(activeBuildConfigForCurrentProject());
+    });
 
     ProjectTree *tree = &dd->m_projectTree;
     connect(tree, &ProjectTree::currentProjectChanged, dd, [] {
@@ -2485,6 +2488,13 @@ FilePairs ProjectExplorerPlugin::renameFiles(
             = Utils::filtered(nodesAndNewFilePaths, [](const std::pair<Node *, FilePath> &elem) {
         return !elem.first->filePath().equalsCaseSensitive(elem.second);
     });
+
+    // The same as above, for use when the nodes might no longer exist.
+    const QList<std::pair<FilePath, FilePath>> oldAndNewFilePathsFiltered
+            = Utils::transform(nodesAndNewFilePathsFiltered, [](const std::pair<Node *, FilePath> &p) {
+        return std::make_pair(p.first->filePath(), p.second);
+    });
+
     FilePaths renamedOnly;
     FilePaths failedRenamings;
     const auto renameFile = [&failedRenamings](const Node *node, const FilePath &newFilePath) {
@@ -2550,9 +2560,9 @@ FilePairs ProjectExplorerPlugin::renameFiles(
     }
 
     FilePairs allRenamedFiles;
-    for (const std::pair<Node *, FilePath> &candidate : nodesAndNewFilePathsFiltered) {
-        if (!failedRenamings.contains(candidate.first->filePath()))
-            allRenamedFiles.emplaceBack(candidate.first->filePath(), candidate.second);
+    for (const std::pair<FilePath, FilePath> &candidate : oldAndNewFilePathsFiltered) {
+        if (!failedRenamings.contains(candidate.first))
+            allRenamedFiles.emplaceBack(candidate.first, candidate.second);
     }
     emit instance()->filesRenamed(allRenamedFiles);
     return allRenamedFiles;
@@ -3348,9 +3358,9 @@ void ProjectExplorerPluginPrivate::updateContextMenuActions(Node *currentNode)
                 m_runActionContextMenu->setEnabled(true);
             } else {
                 QList<RunConfiguration *> runConfigs;
-                if (Target *t = project->activeTarget()) {
+                if (BuildConfiguration *bc = project->activeBuildConfiguration()) {
                     const QString buildKey = pn->buildKey();
-                    for (RunConfiguration *rc : t->runConfigurations()) {
+                    for (RunConfiguration *rc : bc->runConfigurations()) {
                         if (rc->buildKey() == buildKey)
                             runConfigs.append(rc);
                     }
@@ -3807,16 +3817,15 @@ void ProjectExplorerPluginPrivate::openTerminalHereWithRunEnv()
 
     const Project * const project = ProjectTree::projectForNode(currentNode);
     QTC_ASSERT(project, return);
-    const Target * const target = project->activeTarget();
-    QTC_ASSERT(target, return);
-    const RunConfiguration * const runConfig = runConfigForNode(target,
-                                                                currentNode->asProjectNode());
+    const BuildConfiguration * const bc = project->activeBuildConfiguration();
+    QTC_ASSERT(bc, return);
+    const RunConfiguration * const runConfig = runConfigForNode(bc, currentNode->asProjectNode());
     QTC_ASSERT(runConfig, return);
 
     const ProcessRunData runnable = runConfig->runnable();
     IDevice::ConstPtr device = DeviceManager::deviceForPath(runnable.command.executable());
     if (!device)
-        device = RunDeviceKitAspect::device(target->kit());
+        device = RunDeviceKitAspect::device(bc->kit());
     QTC_ASSERT(device && device->canOpenTerminal(), return);
 
     FilePath workingDir = device->type() == Constants::DESKTOP_DEVICE_TYPE
@@ -4244,10 +4253,10 @@ using RunAcceptor = std::function<void(RunConfiguration *)>;
 
 static RunConfiguration *runConfigurationForDisplayName(const QString &displayName)
 {
-    const Target *target = ProjectManager::startupTarget();
-    if (!target)
+    const BuildConfiguration * const bc = activeBuildConfigForActiveProject();
+    if (!bc)
         return nullptr;
-    const QList<RunConfiguration *> runconfigs = target->runConfigurations();
+    const QList<RunConfiguration *> runconfigs = bc->runConfigurations();
     return Utils::findOrDefault(runconfigs, [displayName](RunConfiguration *rc) {
         return rc->displayName() == displayName;
     });
@@ -4260,12 +4269,12 @@ static LocatorMatcherTasks runConfigurationMatchers(const RunAcceptor &acceptor)
     const auto onSetup = [acceptor] {
         const LocatorStorage &storage = *LocatorStorage::storage();
         const QString input = storage.input();
-        const Target *target = ProjectManager::startupTarget();
-        if (!target)
+        const BuildConfiguration * const bc = activeBuildConfigForActiveProject();
+        if (!bc)
             return;
 
         LocatorFilterEntries entries;
-        for (auto rc : target->runConfigurations()) {
+        for (auto rc : bc->runConfigurations()) {
             if (rc->displayName().contains(input, Qt::CaseInsensitive)) {
                 LocatorFilterEntry entry;
                 entry.displayName = rc->displayName();
@@ -4328,7 +4337,7 @@ LocatorMatcherTasks RunConfigurationDebugFilter::matchers()
 
 static void switchAcceptor(RunConfiguration *config)
 {
-    ProjectManager::startupTarget()->setActiveRunConfiguration(config);
+    activeBuildConfigForActiveProject()->setActiveRunConfiguration(config);
     QTimer::singleShot(200, ICore::mainWindow(), [name = config->displayName()] {
         if (auto ks = ICore::mainWindow()->findChild<QWidget *>("KitSelector.Button")) {
             ToolTip::show(ks->mapToGlobal(QPoint{25, 25}),

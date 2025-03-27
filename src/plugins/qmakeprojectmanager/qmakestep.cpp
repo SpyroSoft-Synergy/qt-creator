@@ -88,7 +88,7 @@ QMakeStep::QMakeStep(BuildStepList *bsl, Id id)
     };
     setSummaryUpdater(updateSummary);
 
-    connect(target(), &Target::kitChanged, this, updateSummary);
+    connect(buildConfiguration(), &BuildConfiguration::kitChanged, this, updateSummary);
 }
 
 QmakeBuildConfiguration *QMakeStep::qmakeBuildConfiguration() const
@@ -120,15 +120,12 @@ QString QMakeStep::allArguments(const QtVersion *v, ArgumentFlags flags) const
 
     if (v->qtVersion() < QVersionNumber(5, 0, 0))
         arguments << "-r";
-    bool userProvidedMkspec = false;
-    for (ProcessArgs::ConstArgIterator ait(userArguments()); ait.next(); ) {
-        if (ait.value() == "-spec") {
-            if (ait.next()) {
-                userProvidedMkspec = true;
-                break;
-            }
-        }
-    }
+
+    const QStringList userArgs = ProcessArgs::splitArgs(userArguments(),
+                                                        project()->projectFilePath().osType());
+    const int mkspecIndex = userArgs.indexOf("-spec");
+    const bool userProvidedMkspec = mkspecIndex >= 0 && mkspecIndex + 1 < userArgs.size();
+
     const FilePath specArg = FilePath::fromString(mkspec());
     QTC_CHECK(specArg.isSameDevice(v->qmakeFilePath()));
     if (!userProvidedMkspec && !specArg.isEmpty())
@@ -378,15 +375,11 @@ QString QMakeStep::effectiveQMakeCall() const
 
 QStringList QMakeStep::parserArguments()
 {
-    // NOTE: extra parser args placed before the other args intentionally
-    QStringList result = m_extraParserArgs;
     QtVersion *qt = QtKitAspect::qtVersion(kit());
     QTC_ASSERT(qt, return {});
-    for (ProcessArgs::ConstArgIterator ait(allArguments(qt, ArgumentFlag::Expand)); ait.next(); ) {
-        if (ait.isSimple())
-            result << ait.value();
-    }
-    return result;
+    const QString allArgs = allArguments(qt, ArgumentFlag::Expand);
+    // NOTE: extra parser args placed before the other args intentionally
+    return m_extraParserArgs + ProcessArgs::filterSimpleArgs(allArgs, qt->qmakeFilePath().osType());
 }
 
 QString QMakeStep::mkspec() const
@@ -457,7 +450,7 @@ QWidget *QMakeStep::createConfigWidget()
 
     connect(project(), &Project::projectLanguagesUpdated,
             widget, [this] { linkQmlDebuggingLibraryChanged(); });
-    connect(target(), &Target::parsingFinished,
+    connect(buildSystem(), &BuildSystem::parsingFinished,
             widget, [this] { updateEffectiveQMakeCall(); });
     connect(qmakeBuildConfiguration(), &QmakeBuildConfiguration::useQtQuickCompilerChanged,
             widget, [this] { useQtQuickCompilerChanged(); });
@@ -465,7 +458,7 @@ QWidget *QMakeStep::createConfigWidget()
             widget, [this] { separateDebugInfoChanged(); });
     connect(qmakeBuildConfiguration(), &QmakeBuildConfiguration::qmakeBuildConfigurationChanged,
             widget, [this] { qmakeBuildConfigChanged(); });
-    connect(target(), &Target::kitChanged,
+    connect(buildConfiguration(), &BuildConfiguration::kitChanged,
             widget, [this] { qtVersionChanged(); });
 
     connect(abisListWidget, &QListWidget::itemChanged, this, [this] {

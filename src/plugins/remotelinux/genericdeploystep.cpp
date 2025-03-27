@@ -156,10 +156,7 @@ GroupItem GenericDeployStep::transferTask(const Storage<FilesToTransfer> &storag
                       .arg(FileTransfer::transferMethodName(preferredTransferMethod),
                            FileTransfer::transferMethodName(transferMethod),
                            deviceConfiguration()->displayName());
-            if (transferMethod == FileTransferMethod::GenericCopy)
-                addWarningMessage(message);
-            else
-                addProgressMessage(message);
+            addProgressMessage(message);
             m_emittedDowngradeWarning = true;
         }
         transfer.setTransferMethod(transferMethod);
@@ -191,7 +188,7 @@ GroupItem GenericDeployStep::deployRecipe()
     const Storage<FilesToTransfer> storage;
 
     const auto onSetup = [this, storage] {
-        const QList<DeployableFile> deployableFiles = target()->deploymentData().allFiles();
+        const QList<DeployableFile> deployableFiles = buildSystem()->deploymentData().allFiles();
         FilesToTransfer &files = *storage;
         for (const DeployableFile &file : deployableFiles) {
             if (!ignoreMissingFiles() || file.localFilePath().exists()) {

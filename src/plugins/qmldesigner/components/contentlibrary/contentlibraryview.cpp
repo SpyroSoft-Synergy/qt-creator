@@ -31,11 +31,7 @@
 #include <utils3d.h>
 #include <variantproperty.h>
 
-#include <solutions/zip/zipreader.h>
-
 #include <utils/algorithm.h>
-
-#include <coreplugin/messagebox.h>
 
 #ifndef QMLDESIGNER_TEST
 #include <projectexplorer/kit.h>
@@ -52,6 +48,12 @@
 #include <QMessageBox>
 #include <QPixmap>
 #include <QVector3D>
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
+#  include <QtCore/private/qzipreader_p.h>
+#else
+#  include <QtGui/private/qzipreader_p.h>
+#endif
 
 namespace QmlDesigner {
 
@@ -77,23 +79,7 @@ WidgetInfo ContentLibraryView::widgetInfo()
         m_bundleHelper = std::make_unique<BundleHelper>(this, m_widget);
 
         connect(m_widget, &ContentLibraryWidget::importQtQuick3D, this, [&] {
-            DesignDocument *document = QmlDesignerPlugin::instance()->currentDesignDocument();
-            if (document && !document->inFileComponentModelActive() && model()) {
-#ifdef QDS_USE_PROJECTSTORAGE
-                Import import = Import::createLibraryImport("QtQuick3D");
-                model()->changeImports({import}, {});
-                return;
-#else
-                if (ModelUtils::addImportWithCheck(
-                    "QtQuick3D",
-                    [](const Import &import) { return !import.hasVersion() || import.majorVersion() >= 6; },
-                        model())) {
-                    return;
-                }
-#endif
-            }
-            Core::AsynchronousMessageBox::warning(tr("Failed to Add Import"),
-                                                  tr("Could not add QtQuick3D import to project."));
+            Utils3D::addQuick3DImportAndView3D(this);
         });
         connect(m_widget, &ContentLibraryWidget::bundleMaterialDragStarted, this,
                 [&] (QmlDesigner::ContentLibraryMaterial *mat) {
@@ -863,7 +849,7 @@ void ContentLibraryView::importBundleToContentLib()
     if (importPath.isEmpty())
         return;
 
-    ZipReader zipReader(importPath);
+    QZipReader zipReader(importPath);
 
     QByteArray bundleJsonContent = zipReader.fileData(Constants::BUNDLE_JSON_FILENAME);
     QTC_ASSERT(!bundleJsonContent.isEmpty(), return);

@@ -92,6 +92,7 @@
 #include <utils/proxyaction.h>
 #include <utils/qtcassert.h>
 #include <utils/statuslabel.h>
+#include <utils/stringutils.h>
 #include <utils/styledbar.h>
 #include <utils/temporarydirectory.h>
 #include <utils/utilsicons.h>
@@ -429,6 +430,27 @@ QAction *addCheckableAction(const QObject *parent, QMenu *menu, const QString &d
     act->setCheckable(true);
     act->setChecked(checked);
     return act;
+}
+
+void addStandardActions(QWidget *treeView, QMenu *menu)
+{
+    BaseTreeView *view = qobject_cast<BaseTreeView *>(treeView);
+    QTC_ASSERT(treeView, return);
+    QTC_ASSERT(menu, return);
+
+    menu->addSeparator();
+
+    addAction(view, menu, Tr::tr("Copy Selected Items to Clipboard"), true, [view] {
+        setClipboardAndSelection(view->selectionAsText());
+    });
+
+    addAction(view, menu, Tr::tr("Copy Selected Items to New Editor"), true, [view] {
+        openTextEditor("View", view->selectionAsText());
+    });
+
+    menu->addSeparator();
+
+    menu->addAction(settings().settingsDialog.action());
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -1399,7 +1421,7 @@ bool DebuggerPluginPrivate::parseArgument(QStringList::const_iterator &it,
         if (pid) {
             rp.setStartMode(AttachToLocalProcess);
             rp.setCloseMode(DetachAtClose);
-            rp.setAttachPid(pid);
+            runControl->setAttachPid(ProcessHandle(pid));
             rp.setDisplayName(Tr::tr("Process %1").arg(pid));
             rp.setStartMessage(Tr::tr("Attaching to local process %1.").arg(pid));
         } else if (startMode == AttachToRemoteServer) {
@@ -1437,11 +1459,11 @@ bool DebuggerPluginPrivate::parseArgument(QStringList::const_iterator &it,
         qint64 pid = it->section(':', 1, 1).toLongLong();
         auto runControl = new RunControl(ProjectExplorer::Constants::DEBUG_RUN_MODE);
         runControl->setKit(findUniversalCdbKit());
+        runControl->setAttachPid(ProcessHandle(pid));
         auto debugger = new DebuggerRunTool(runControl);
         DebuggerRunParameters &rp = debugger->runParameters();
         rp.setStartMode(AttachToCrashedProcess);
         rp.setCrashParameter(it->section(':', 0, 0));
-        rp.setAttachPid(pid);
         rp.setDisplayName(Tr::tr("Crashed process %1").arg(pid));
         rp.setStartMessage(Tr::tr("Attaching to crashed process %1").arg(pid));
         if (pid < 1) {
@@ -1735,10 +1757,10 @@ RunControl *DebuggerPluginPrivate::attachToRunningProcess(Kit *kit,
     runControl->setKit(kit);
     //: %1: PID
     runControl->setDisplayName(Tr::tr("Process %1").arg(processInfo.processId));
+    runControl->setAttachPid(ProcessHandle(processInfo.processId));
 
     auto debugger = new DebuggerRunTool(runControl);
     DebuggerRunParameters &rp = debugger->runParameters();
-    rp.setAttachPid(ProcessHandle(processInfo.processId));
     rp.setInferiorExecutable(device->filePath(processInfo.executable));
     rp.setStartMode(AttachToLocalProcess);
     rp.setCloseMode(DetachAtClose);
@@ -2081,19 +2103,24 @@ IPlugin::ShutdownFlag DebuggerPlugin::aboutToShutdown()
     dd->m_shutdownTimer.setInterval(0);
     dd->m_shutdownTimer.setSingleShot(true);
 
-    connect(&dd->m_shutdownTimer, &QTimer::timeout, this, [this] {
+    const auto doShutdown = [this] {
         DebuggerMainWindow::doShutdown();
 
         dd->m_shutdownTimer.stop();
+        disconnect(EngineManager::instance(), &EngineManager::shutDownCompleted, this, nullptr);
 
         delete dd->m_mode;
         dd->m_mode = nullptr;
         emit asynchronousShutdownFinished();
-    });
+    };
+
+    connect(&dd->m_shutdownTimer, &QTimer::timeout, this, doShutdown);
 
     if (EngineManager::shutDown()) {
         // If any engine is aborting we give them extra three seconds.
         dd->m_shutdownTimer.setInterval(3000);
+        connect(EngineManager::instance(), &EngineManager::shutDownCompleted, this, doShutdown,
+                Qt::QueuedConnection);
     }
     dd->m_shutdownTimer.start();
 
@@ -2134,7 +2161,7 @@ static BuildConfiguration::BuildType startupBuildType()
 {
     BuildConfiguration::BuildType buildType = BuildConfiguration::Unknown;
     if (RunConfiguration *runConfig = activeRunConfigForActiveProject()) {
-        if (const BuildConfiguration *buildConfig = runConfig->target()->activeBuildConfiguration())
+        if (const BuildConfiguration *buildConfig = runConfig->buildConfiguration())
             buildType = buildConfig->buildType();
     }
     return buildType;
@@ -2287,16 +2314,16 @@ void DebuggerPlugin::attachToProcess(const qint64 processId, const Utils::FilePa
 
 void DebuggerPlugin::attachExternalApplication(RunControl *rc)
 {
-    ProcessHandle pid = rc->applicationProcessHandle();
+    const ProcessHandle pid = rc->applicationProcessHandle();
 
     auto runControl = new RunControl(ProjectExplorer::Constants::DEBUG_RUN_MODE);
-    runControl->setTarget(rc->target());
+    runControl->setBuildConfiguration(rc->buildConfiguration());
     runControl->setDisplayName(Tr::tr("Process %1").arg(pid.pid()));
+    runControl->setAttachPid(pid);
 
     auto debugger = new DebuggerRunTool(runControl);
     DebuggerRunParameters &rp = debugger->runParameters();
     rp.setInferiorExecutable(rc->targetFilePath());
-    rp.setAttachPid(pid);
     rp.setStartMode(AttachToLocalProcess);
     rp.setCloseMode(DetachAtClose);
 

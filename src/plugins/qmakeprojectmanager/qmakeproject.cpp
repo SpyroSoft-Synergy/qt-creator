@@ -162,7 +162,7 @@ QmakeProject::QmakeProject(const FilePath &fileName) :
     setDisplayName(fileName.completeBaseName());
     setCanBuildProducts();
     setHasMakeInstallEquivalent(true);
-    setBuildSystemCreator<QmakeBuildSystem>();
+    setBuildSystemCreator<QmakeBuildSystem>("qmake");
 }
 
 QmakeProject::~QmakeProject()
@@ -212,8 +212,8 @@ QmakeBuildSystem::QmakeBuildSystem(BuildConfiguration *bc)
     connect(BuildManager::instance(), &BuildManager::buildQueueFinished,
             this, &QmakeBuildSystem::buildFinished);
 
-    connect(bc->target(),
-            &Target::activeBuildConfigurationChanged,
+    connect(bc->project(),
+            &Project::activeBuildConfigurationChanged,
             this,
             [this](BuildConfiguration *bc) {
                 if (bc == buildConfiguration())
@@ -647,7 +647,7 @@ void QmakeBuildSystem::decrementPendingEvaluateFutures()
             updateBuildSystemData();
             updateCodeModels();
             updateDocuments();
-            target()->updateDefaultDeployConfigurations();
+            buildConfiguration()->updateDefaultDeployConfigurations();
             m_guard.markAsSuccess(); // Qmake always returns (some) data, even when it failed:-)
             TRACE("success" << int(m_guard.isSuccess()));
             m_guard = {}; // This triggers emitParsingFinished by destroying the previous guard.

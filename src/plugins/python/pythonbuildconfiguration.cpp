@@ -68,7 +68,7 @@ PySideBuildStep::PySideBuildStep(BuildStepList *bsl, Id id)
         env.prependOrSetPath(m_pysideProject().parentDir());
     });
 
-    connect(target(), &Target::buildSystemUpdated, this, &PySideBuildStep::updateExtraCompilers);
+    connect(buildSystem(), &BuildSystem::updated, this, &PySideBuildStep::updateExtraCompilers);
     connect(&m_pysideUic, &BaseAspect::changed, this, &PySideBuildStep::updateExtraCompilers);
 }
 
@@ -391,7 +391,8 @@ public:
     {
         registerBuildConfiguration<PythonBuildConfiguration>("Python.PySideBuildConfiguration");
         setSupportedProjectType(PythonProjectId);
-        setSupportedProjectMimeTypeName(Constants::C_PY_PROJECT_MIME_TYPE);
+        setSupportedProjectMimeTypeNames(
+            {Constants::C_PY_PROJECT_MIME_TYPE, Constants::C_PY_PROJECT_MIME_TYPE_TOML});
         setBuildGenerator([](const Kit *k, const FilePath &projectPath, bool forSetup) {
             if (std::optional<Interpreter> python = PythonKitAspect::python(k)) {
                 BuildInfo base;

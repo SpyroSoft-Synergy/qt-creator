@@ -133,8 +133,7 @@ QmakeBuildConfiguration::QmakeBuildConfiguration(Target *target, Id id)
         updateCacheAndEmitEnvironmentChanged();
     });
 
-    connect(target, &Target::kitChanged,
-            this, &QmakeBuildConfiguration::kitChanged);
+    connect(this, &BuildConfiguration::kitChanged, this, &QmakeBuildConfiguration::kitChanged);
     MacroExpander *expander = macroExpander();
     expander->registerVariable("Qmake:Makefile", "Qmake makefile", [this]() -> QString {
         const FilePath file = makefile();
@@ -152,8 +151,10 @@ QmakeBuildConfiguration::QmakeBuildConfiguration(Target *target, Id id)
             this, &QmakeBuildConfiguration::updateProblemLabel);
     connect(&settings(), &AspectContainer::changed,
             this, &QmakeBuildConfiguration::updateProblemLabel);
-    connect(target, &Target::parsingFinished, this, &QmakeBuildConfiguration::updateProblemLabel);
-    connect(target, &Target::kitChanged, this, &QmakeBuildConfiguration::updateProblemLabel);
+    connect(buildSystem(), &BuildSystem::parsingFinished,
+            this, &QmakeBuildConfiguration::updateProblemLabel);
+    connect(this, &BuildConfiguration::kitChanged,
+            this, &QmakeBuildConfiguration::updateProblemLabel);
 
     connect(&separateDebugInfo, &BaseAspect::changed, this, [this] {
         emit separateDebugInfoChanged();
@@ -417,16 +418,8 @@ QStringList QmakeBuildConfiguration::initialArgs() const
 {
     if (BuildStepList *buildSteps = this->buildSteps()) {
         if (auto qmakeStep = buildSteps->firstOfType<QmakeProjectManager::QMakeStep>()) {
-            QString arg = qmakeStep->userArguments.unexpandedArguments();
-            ProcessArgs::ConstArgIterator it{arg};
-            QStringList result;
-
-            while (it.next()) {
-                if (it.isSimple())
-                    result << it.value();
-            }
-
-            return result;
+            return ProcessArgs::splitArgs(qmakeStep->userArguments.arguments(),
+                                          project()->projectFilePath().osType());
         }
     }
     return {};

@@ -1734,7 +1734,8 @@ void QmakeProFile::applyEvaluate(const QmakeEvalResultPtr &result)
             m_wildcardWatcher = std::make_unique<FileSystemWatcher>();
             QObject::connect(
                 m_wildcardWatcher.get(), &FileSystemWatcher::directoryChanged,
-                [this](QString path) {
+                [this](const FilePath &filePath) {
+                    const QString path = filePath.toFSPathString();
                     QStringList directoryContents = QDir(path).entryList();
                     if (m_wildcardDirectoryContents.value(path) != directoryContents) {
                         m_wildcardDirectoryContents.insert(path, directoryContents);
@@ -1742,13 +1743,16 @@ void QmakeProFile::applyEvaluate(const QmakeEvalResultPtr &result)
                     }
                 });
         }
-        const QStringList directoriesToAdd = Utils::filtered<QStringList>(
-            Utils::toList(result->directoriesWithWildcards),
-            [this](const QString &path) {
-                return !m_wildcardWatcher->watchesDirectory(path);
-            });
-        for (const QString &path : directoriesToAdd)
+        FilePaths directoriesToAdd;
+        for (const QString &dir : std::as_const(result->directoriesWithWildcards)) {
+            const FilePath directory = FilePath::fromString(dir);
+            if (!m_wildcardWatcher->watchesDirectory(directory))
+                directoriesToAdd.append(directory);
+        }
+        for (const FilePath &dir : directoriesToAdd) {
+            const QString path = dir.toFSPathString();
             m_wildcardDirectoryContents.insert(path, QDir(path).entryList());
+        }
         m_wildcardWatcher->addDirectories(directoriesToAdd, FileSystemWatcher::WatchModifiedDate);
     }
     if (m_wildcardWatcher) {
@@ -1756,15 +1760,15 @@ void QmakeProFile::applyEvaluate(const QmakeEvalResultPtr &result)
             m_wildcardWatcher.reset();
             m_wildcardDirectoryContents.clear();
         } else {
-            const QStringList directoriesToRemove =
-                Utils::filtered<QStringList>(
+            const FilePaths directoriesToRemove =
+                Utils::filtered<FilePaths>(
                     m_wildcardWatcher->directories(),
-                    [&result](const QString &path) {
-                        return !result->directoriesWithWildcards.contains(path);
+                    [&result](const FilePath &path) {
+                        return !result->directoriesWithWildcards.contains(path.toFSPathString());
                     });
             m_wildcardWatcher->removeDirectories(directoriesToRemove);
-            for (const QString &path : directoriesToRemove)
-                m_wildcardDirectoryContents.remove(path);
+            for (const FilePath &path : directoriesToRemove)
+                m_wildcardDirectoryContents.remove(path.toFSPathString());
         }
     }
 

@@ -514,7 +514,7 @@ CMakeBuildSettingsWidget::CMakeBuildSettingsWidget(CMakeBuildConfiguration *bc) 
     });
 
     updateFromKit();
-    connect(m_buildConfig->target(), &Target::kitChanged,
+    connect(m_buildConfig, &BuildConfiguration::kitChanged,
             this, &CMakeBuildSettingsWidget::updateFromKit);
     connect(bc, &CMakeBuildConfiguration::enabledChanged, this, [this, bc] {
         if (bc->isEnabled())
@@ -868,7 +868,7 @@ void CMakeBuildSettingsWidget::updateFromKit()
 
     // First the key value parameters
     ConfigModel::KitConfiguration configHash;
-    for (const CMakeConfigItem &i : config)
+    for (const CMakeConfigItem &i : std::as_const(config))
         configHash.insert(QString::fromUtf8(i.key), i);
 
     m_configModel->setConfigurationFromKit(configHash);
@@ -1289,7 +1289,7 @@ static void addCMakeConfigurePresetToInitialArguments(QStringList &initialArgume
     if (configurePreset.cacheVariables)
         cache = configurePreset.cacheVariables.value();
 
-    for (const CMakeConfigItem &presetItemRaw : cache) {
+    for (const CMakeConfigItem &presetItemRaw : std::as_const(cache)) {
 
         // Expand the CMakePresets Macros
         CMakeConfigItem presetItem(presetItemRaw);
@@ -1329,7 +1329,7 @@ static void addCMakeConfigurePresetToInitialArguments(QStringList &initialArgume
                 // Remove the expanded Qt path from the presets values
                 QString argItemExpandedValue = argItem.expandedValue(k);
                 presetValueList.removeIf([argItemExpandedValue](const QString &presetPath) {
-                    QStringList argItemPaths = argItemExpandedValue.split(";");
+                    const QStringList argItemPaths = argItemExpandedValue.split(";");
                     for (const QString &argPath : argItemPaths) {
                         const FilePath argFilePath = FilePath::fromString(argPath);
                         const FilePath presetFilePath = FilePath::fromUserInput(presetPath);
@@ -1341,7 +1341,7 @@ static void addCMakeConfigurePresetToInitialArguments(QStringList &initialArgume
                 });
 
                 // Add the presets values to the final argument
-                for (const QString &presetPath : presetValueList) {
+                for (const QString &presetPath : std::as_const(presetValueList)) {
                     argItem.value.append(";");
                     argItem.value.append(presetPath.toUtf8());
                 }
@@ -2340,30 +2340,26 @@ InitialCMakeArgumentsAspect::InitialCMakeArgumentsAspect(AspectContainer *contai
 class ConfigureEnvironmentAspectWidget final : public EnvironmentAspectWidget
 {
 public:
-    ConfigureEnvironmentAspectWidget(ConfigureEnvironmentAspect *aspect, Target *target)
+    ConfigureEnvironmentAspectWidget(ConfigureEnvironmentAspect *aspect, BuildConfiguration *bc)
         : EnvironmentAspectWidget(aspect)
     {
-        envWidget()->setOpenTerminalFunc([target](const Environment &env) {
-            if (BuildConfiguration *bc = target->activeBuildConfiguration())
-                Core::FileUtils::openTerminal(bc->buildDirectory(), env);
+        envWidget()->setOpenTerminalFunc([bc](const Environment &env) {
+            Core::FileUtils::openTerminal(bc->buildDirectory(), env);
         });
     }
 };
 
-ConfigureEnvironmentAspect::ConfigureEnvironmentAspect(AspectContainer *container,
-                                                       BuildConfiguration *bc)
-    : EnvironmentAspect(container)
+ConfigureEnvironmentAspect::ConfigureEnvironmentAspect(BuildConfiguration *bc)
+    : EnvironmentAspect(bc)
 {
-    Target *target = bc->target();
     setIsLocal(true);
     setAllowPrintOnRun(false);
-    setConfigWidgetCreator(
-        [this, target] { return new ConfigureEnvironmentAspectWidget(this, target); });
+    setConfigWidgetCreator([this, bc] { return new ConfigureEnvironmentAspectWidget(this, bc); });
     addSupportedBaseEnvironment(Tr::tr("Clean Environment"), {});
     setLabelText(Tr::tr("Base environment for the CMake configure step:"));
 
-    const int systemEnvIndex = addSupportedBaseEnvironment(Tr::tr("System Environment"), [target] {
-        IDevice::ConstPtr device = BuildDeviceKitAspect::device(target->kit());
+    const int systemEnvIndex = addSupportedBaseEnvironment(Tr::tr("System Environment"), [bc] {
+        IDevice::ConstPtr device = BuildDeviceKitAspect::device(bc->kit());
         return device ? device->systemEnvironment() : Environment::systemEnvironment();
     });
 
@@ -2371,18 +2367,11 @@ ConfigureEnvironmentAspect::ConfigureEnvironmentAspect(AspectContainer *containe
         return bc->environment();
     });
 
-    connect(target,
-            &Target::activeBuildConfigurationChanged,
-            this,
-            &EnvironmentAspect::environmentChanged);
-    connect(target,
-            &Target::buildEnvironmentChanged,
-            this,
-            &EnvironmentAspect::environmentChanged);
-
+    connect(bc, &BuildConfiguration::environmentChanged,
+            this, &EnvironmentAspect::environmentChanged);
 
     const CMakeConfigItem presetItem = CMakeConfigurationKitAspect::cmakePresetConfigItem(
-        target->kit());
+        bc->kit());
 
     setBaseEnvironmentBase(presetItem.isNull() ? buildEnvIndex : systemEnvIndex);
 
@@ -2391,18 +2380,16 @@ ConfigureEnvironmentAspect::ConfigureEnvironmentAspect(AspectContainer *containe
             this,
             &EnvironmentAspect::environmentChanged);
 
-    connect(KitManager::instance(), &KitManager::kitUpdated, this, [this, target](const Kit *k) {
-        if (target->kit() == k)
+    connect(KitManager::instance(), &KitManager::kitUpdated, this, [this, bc](const Kit *k) {
+        if (bc->kit() == k)
             emit EnvironmentAspect::environmentChanged();
     });
 
-    addModifier([target](Utils::Environment &env) {
+    addModifier([bc](Utils::Environment &env) {
         // This will add ninja to path
-        if (BuildConfiguration *bc = target->activeBuildConfiguration()) {
-            bc->addToEnvironment(env);
-        }
-        target->kit()->addToBuildEnvironment(env);
-        env.modify(target->project()->additionalEnvironment());
+        bc->addToEnvironment(env);
+        bc->kit()->addToBuildEnvironment(env);
+        env.modify(bc->project()->additionalEnvironment());
     });
 }
 

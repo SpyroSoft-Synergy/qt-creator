@@ -13,6 +13,7 @@ namespace ProjectExplorer {
 
 class BuildConfiguration;
 class BuildStepList;
+class BuildSystem;
 class Target;
 class DeployConfigurationFactory;
 
@@ -44,6 +45,7 @@ public:
     void setCustomDeploymentData(const DeploymentData &data) { m_customDeploymentData = data; }
 
     BuildConfiguration *buildConfiguration() const { return m_buildConfiguration; }
+    BuildSystem *buildSystem() const;
 
 private:
     BuildConfiguration * const m_buildConfiguration;
@@ -78,7 +80,8 @@ public:
     void setSupportedProjectType(Utils::Id id);
 
     // Step is only added if condition is not set, or returns true when called.
-    void addInitialStep(Utils::Id stepId, const std::function<bool(Target *)> &condition = {});
+    void addInitialStep(
+        Utils::Id stepId, const std::function<bool(BuildConfiguration *)> &condition = {});
 
     bool canHandle(ProjectExplorer::Target *target) const;
 

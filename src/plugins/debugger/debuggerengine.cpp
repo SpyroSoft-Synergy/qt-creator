@@ -128,6 +128,7 @@ DebuggerRunParameters DebuggerRunParameters::fromRunControl(ProjectExplorer::Run
 
     DebuggerRunParameters params;
 
+    params.m_attachPid = runControl->attachPid();
     params.m_displayName = runControl->displayName();
 
     if (auto symbolsAspect = runControl->aspectData<SymbolFileAspect>())
@@ -285,9 +286,9 @@ Result DebuggerRunParameters::fixupParameters(ProjectExplorer::RunControl *runCo
     if (HostOsInfo::isWindowsHost()) {
         // Otherwise command lines with '> tmp.log' hang.
         ProcessArgs::SplitError perr;
-        ProcessArgs::prepareArgs(m_inferior.command.arguments(), &perr,
+        ProcessArgs::prepareShellArgs(m_inferior.command.arguments(), &perr,
                                  HostOsInfo::hostOs(), nullptr,
-                                 m_inferior.workingDirectory).toWindowsArgs();
+                                 m_inferior.workingDirectory);
         if (perr != ProcessArgs::SplitOk) {
             // perr == BadQuoting is never returned on Windows
             // FIXME? QTCREATORBUG-2809
@@ -1422,7 +1423,7 @@ void DebuggerEngine::abortDebugger()
         // We already tried. Try harder.
         showMessage("ABORTING DEBUGGER. SECOND TIME.");
         abortDebuggerProcess();
-        emit requestRunControlFinish();
+        emit requestRunControlStop();
     }
 }
 
@@ -3130,7 +3131,7 @@ void CppDebuggerEngine::validateRunParameters(DebuggerRunParameters &rp)
             }
             if (globalRegExpSourceMap.isEmpty())
                 return;
-            if (std::shared_ptr<ElfMapper> mapper = reader.readSection(".debug_str")) {
+            if (std::unique_ptr<ElfMapper> mapper = reader.readSection(".debug_str")) {
                 const char *str = mapper->start;
                 const char *limit = str + mapper->fdlen;
                 bool found = false;

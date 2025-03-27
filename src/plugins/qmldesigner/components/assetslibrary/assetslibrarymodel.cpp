@@ -21,6 +21,8 @@
 #include <QFileSystemModel>
 #include <QMessageBox>
 
+using namespace Utils;
+
 namespace QmlDesigner {
 
 AssetsLibraryModel::AssetsLibraryModel(QObject *parent)
@@ -45,10 +47,10 @@ void AssetsLibraryModel::createBackendModel()
         syncIsEmpty();
     });
 
-    m_fileWatcher = new Utils::FileSystemWatcher(parent());
-    QObject::connect(m_fileWatcher, &Utils::FileSystemWatcher::fileChanged, this,
-                     [this] (const QString &path) {
-        emit fileChanged(path);
+    m_fileWatcher = new FileSystemWatcher(parent());
+    QObject::connect(m_fileWatcher, &FileSystemWatcher::fileChanged, this,
+                     [this] (const FilePath &path) {
+        emit fileChanged(path.toFSPathString());
     });
 }
 
@@ -274,8 +276,8 @@ void AssetsLibraryModel::updateExpandPath(const Utils::FilePath &oldPath, const 
 
         // update subfolders expand states
         if (childPath.isChildOf(oldPath)) {
-            QString relativePath = Utils::FilePath::calcRelativePath(path, oldPath.toFSPathString());
-            Utils::FilePath newChildPath = newPath.pathAppended(relativePath);
+            Utils::FilePath relativePath = childPath.relativePathFromDir(oldPath);
+            Utils::FilePath newChildPath = newPath.resolvePath(relativePath);
 
             value = s_folderExpandStateHash.take(path);
             saveExpandState(newChildPath.toFSPathString(), value);
@@ -290,8 +292,8 @@ bool AssetsLibraryModel::filterAcceptsRow(int sourceRow, const QModelIndex &sour
     QModelIndex sourceIdx = m_sourceFsModel->index(sourceRow, 0, sourceParent);
     QString sourcePath = m_sourceFsModel->filePath(sourceIdx);
 
-    if (QFileInfo(sourcePath).isFile() && !m_fileWatcher->watchesFile(sourcePath))
-        m_fileWatcher->addFile(sourcePath, Utils::FileSystemWatcher::WatchModifiedDate);
+    if (QFileInfo(sourcePath).isFile() && !m_fileWatcher->watchesFile(FilePath::fromString(sourcePath)))
+        m_fileWatcher->addFile(FilePath::fromString(sourcePath), FileSystemWatcher::WatchModifiedDate);
 
     if (!m_searchText.isEmpty() && path.startsWith(m_rootPath) && QFileInfo{path}.isDir()) {
         QString sourceName = m_sourceFsModel->fileName(sourceIdx);

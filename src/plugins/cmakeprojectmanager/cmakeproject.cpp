@@ -55,7 +55,7 @@ CMakeProject::CMakeProject(const FilePath &fileName)
     setProjectLanguages(Core::Context(ProjectExplorer::Constants::CXX_LANGUAGE_ID));
     setDisplayName(projectDirectory().fileName());
     setCanBuildProducts();
-    setBuildSystemCreator<CMakeBuildSystem>();
+    setBuildSystemCreator<CMakeBuildSystem>("cmake");
 
     // This only influences whether 'Install into temporary host directory'
     // will show up by default enabled in some remote deploy configurations.
@@ -330,7 +330,7 @@ void CMakeProject::readPresets()
     m_presetsData = combinePresets(cmakePresetsData, cmakeUserPresetsData);
     setupBuildPresets(m_presetsData);
 
-    for (const auto &configPreset : m_presetsData.configurePresets) {
+    for (const auto &configPreset : std::as_const(m_presetsData.configurePresets)) {
         if (configPreset.hidden)
             continue;
 

@@ -97,7 +97,6 @@ public:
     QString displayName() const { return m_displayName; }
 
     void setAttachPid(Utils::ProcessHandle pid) { m_attachPid = pid; }
-    void setAttachPid(qint64 pid) { m_attachPid = Utils::ProcessHandle(pid); }
     Utils::ProcessHandle attachPid() const { return m_attachPid; }
 
     void setSolibSearchPath(const Utils::FilePaths &list) { m_solibSearchPath = list; }
@@ -111,12 +110,6 @@ public:
     void setQmlDebugging(bool on) { m_isQmlDebugging = on; }
 
     void setRemoteChannel(const QString &channel) { m_remoteChannel = channel; }
-    void setRemoteChannel(const QUrl &url) {
-        m_remoteChannel = QString("%1:%2").arg(url.host()).arg(url.port());
-    }
-    void setRemoteChannel(const QString &host, int port) {
-        m_remoteChannel = QString("%1:%2").arg(host).arg(port);
-    }
     QString remoteChannel() const { return m_remoteChannel; }
 
     void setUseExtendedRemote(bool on) { m_useExtendedRemote = on; }
@@ -616,7 +609,6 @@ public:
 signals:
     void engineStarted();
     void engineFinished();
-    void requestRunControlFinish();
     void requestRunControlStop();
     void attachToCoreRequested(const QString &coreFile);
     void postMessageRequested(const QString &msg, Utils::OutputFormat format, bool appendNewLine) const;

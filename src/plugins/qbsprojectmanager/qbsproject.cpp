@@ -107,7 +107,7 @@ QbsProject::QbsProject(const FilePath &fileName)
     setProjectLanguages(Context(ProjectExplorer::Constants::CXX_LANGUAGE_ID));
     setCanBuildProducts();
     setDisplayName(fileName.completeBaseName());
-    setBuildSystemCreator<QbsBuildSystem>();
+    setBuildSystemCreator<QbsBuildSystem>("qbs");
 }
 
 QbsProject::~QbsProject()
@@ -137,12 +137,8 @@ void QbsProject::configureAsExampleProject(Kit *kit)
         static_cast<QbsBuildSystem *>(activeBuildSystem())->prepareForParsing();
 }
 
-
-static bool supportsNodeAction(ProjectAction action, const Node *node)
+static bool supportsNodeAction(const QbsBuildSystem *bs, ProjectAction action, const Node *node)
 {
-    QbsBuildSystem *bs = static_cast<QbsBuildSystem *>(activeBuildSystem(node->getProject()));
-    if (!bs)
-        return false;
     if (!bs->isProjectEditable())
         return false;
     if (action == RemoveFile || action == Rename)
@@ -175,7 +171,7 @@ QbsBuildSystem::QbsBuildSystem(BuildConfiguration *bc)
             }
         }
         CppEditor::GeneratedCodeModelSupport::update(m_extraCompilers);
-        for (ExtraCompiler *compiler : m_extraCompilers) {
+        for (ExtraCompiler *compiler : std::as_const(m_extraCompilers)) {
             if (compiler->isDirty())
                 compiler->compileFile();
         }
@@ -189,12 +185,8 @@ QbsBuildSystem::QbsBuildSystem(BuildConfiguration *bc)
 
     delayParsing();
 
-    connect(bc->project(), &Project::activeTargetChanged,
-            this, &QbsBuildSystem::changeActiveTarget);
-
-    connect(bc->target(), &Target::activeBuildConfigurationChanged,
+    connect(bc->project(), &Project::activeBuildConfigurationChanged,
             this, &QbsBuildSystem::delayParsing);
-
     connect(bc->project(), &Project::projectFileIsDirty, this, &QbsBuildSystem::delayParsing);
     updateProjectNodes({});
 }
@@ -219,7 +211,7 @@ bool QbsBuildSystem::supportsAction(Node *context, ProjectAction action, const N
             return true;
     }
 
-    return supportsNodeAction(action, node);
+    return supportsNodeAction(this, action, node);
 }
 
 bool QbsBuildSystem::addFiles(Node *context, const FilePaths &filePaths, FilePaths *notAdded)
@@ -537,7 +529,7 @@ FilePath QbsBuildSystem::groupFilePath(const QJsonObject &group) const
 
 FilePath QbsBuildSystem::installRoot()
 {
-    const auto dc = target()->activeDeployConfiguration();
+    const auto dc = buildConfiguration()->activeDeployConfiguration();
     if (dc) {
         const QList<BuildStep *> steps = dc->stepList()->steps();
         for (const BuildStep * const step : steps) {
@@ -596,12 +588,6 @@ void QbsBuildSystem::handleQbsParsingDone(bool success)
     // in case the "install" check box in the build step is unchecked and then build
     // is triggered (which is otherwise a no-op).
     emitBuildSystemUpdated();
-}
-
-void QbsBuildSystem::changeActiveTarget(Target *t)
-{
-    if (t)
-        delayParsing();
 }
 
 void QbsBuildSystem::triggerParsing()

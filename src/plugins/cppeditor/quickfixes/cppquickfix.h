@@ -13,6 +13,10 @@
 
 #include <optional>
 
+#ifdef WITH_TESTS
+#include "cppquickfix_test.h"
+#endif
+
 namespace CppEditor {
 namespace Internal {
 class CppQuickFixInterface;
@@ -70,6 +74,25 @@ public:
 #endif
     }
 
+    template<class Factory> static void registerFactoryWithStandardTest(const QString &testName)
+    {
+        new Factory;
+#ifdef WITH_TESTS
+        cppEditor()->addTestCreator([testName] {
+            auto factory = std::make_unique<Factory>();
+            factory->enableTestMode();
+            const auto obj = new Internal::Tests::CppQuickFixTestObject(std::move(factory));
+            obj->setObjectName(testName);
+            return obj;
+        });
+#endif
+    }
+
+    void enableTestMode() { m_testMode = true; }
+
+protected:
+    bool testMode() const { return m_testMode; }
+
 private:
     /*!
         Implement this function to match and create the appropriate
@@ -84,6 +107,7 @@ private:
     static ExtensionSystem::IPlugin *cppEditor();
 
     std::optional<QVersionNumber> m_clangdReplacement;
+    bool m_testMode = false;
 };
 
 } // namespace CppEditor
