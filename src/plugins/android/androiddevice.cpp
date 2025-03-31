@@ -658,7 +658,14 @@ QUrl AndroidDevice::toolControlChannel(const ControlChannelHint &) const
 {
     QUrl url;
     url.setScheme(urlTcpScheme());
-    url.setHost("localhost");
+    QString deviceSerialNumber = serialNumber();
+    const int colonPos = deviceSerialNumber.indexOf(QLatin1Char(':'));
+    if (colonPos > 0) {
+        // When wireless debugging is used then the device serial number will include a port number
+        // The port number must be removed to form a valid hostname
+        deviceSerialNumber.truncate(colonPos);
+    }
+    url.setHost(deviceSerialNumber);
     return url;
 }
 
@@ -867,7 +874,7 @@ AndroidDeviceManagerInstance::AndroidDeviceManagerInstance()
 
         const auto parsedAvdList = parseAvdList(output);
         if (parsedAvdList.errorPaths.isEmpty()) {
-            for (const FilePath &avdPath : *storage)
+            for (const FilePath &avdPath : std::as_const(*storage))
                 modifyManufacturerTag(avdPath, Uncomment);
             storage->clear(); // Don't repeat anymore
             handleAvdListChange(parsedAvdList.avdList);

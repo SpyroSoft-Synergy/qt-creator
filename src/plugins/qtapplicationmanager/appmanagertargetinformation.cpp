@@ -34,7 +34,8 @@ QList<TargetInformation> TargetInformation::readFromProject(
     if (!bc->project()->rootProjectNode())
         return result;
 
-    QVariantList packageTargets = bc->project()->extraData(AppManager::Constants::APPMAN_PACKAGE_TARGETS).toList();
+    const QVariantList packageTargets
+        = bc->project()->extraData(AppManager::Constants::APPMAN_PACKAGE_TARGETS).toList();
 //        qDebug() << "APPMAN TARGETS" << packageTargets;
 
     for (const auto &packageTarget : packageTargets) {
@@ -108,7 +109,7 @@ TargetInformation::TargetInformation(const BuildConfiguration *bc)
     if (!project)
         return;
 
-    const RunConfiguration *rc = bc->target()->activeRunConfiguration();
+    const RunConfiguration *rc = bc->activeRunConfiguration();
     if (!rc)
         return;
     if (rc->id() != Constants::RUNCONFIGURATION_ID &&

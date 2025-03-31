@@ -666,7 +666,7 @@ void BaseAspect::registerSubWidget(QWidget *widget)
 
 void BaseAspect::forEachSubWidget(const std::function<void(QWidget *)> &func)
 {
-    for (const QPointer<QWidget> &w : d->m_subWidgets)
+    for (const QPointer<QWidget> &w : std::as_const(d->m_subWidgets))
         func(w);
 }
 
@@ -3412,7 +3412,7 @@ BaseAspect::Data::Ptr BaseAspect::extractData() const
     data->m_classId = metaObject();
     data->m_id = id();
     data->m_cloner = d->m_dataCloner;
-    for (const DataExtractor &extractor : d->m_dataExtractors)
+    for (const DataExtractor &extractor : std::as_const(d->m_dataExtractors))
         extractor(data);
     return Data::Ptr(data);
 }
@@ -3586,7 +3586,7 @@ void AspectList::fromMap(const Utils::Store &map)
 {
     QTC_ASSERT(!settingsKey().isEmpty(), return);
 
-    QVariantList list = map[settingsKey()].toList();
+    const QVariantList list = map[settingsKey()].toList();
     d->volatileItems.clear();
     for (const QVariant &entry : list) {
         auto item = d->createItem();
@@ -3732,7 +3732,7 @@ bool AspectList::isDirty()
     if (d->items != d->volatileItems)
         return true;
 
-    for (const std::shared_ptr<BaseAspect> &item : d->volatileItems) {
+    for (const std::shared_ptr<BaseAspect> &item : std::as_const(d->volatileItems)) {
         if (item->isDirty())
             return true;
     }

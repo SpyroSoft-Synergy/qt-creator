@@ -31,6 +31,7 @@
 #include <QTabWidget>
 #include <QTextEdit>
 #include <QToolBar>
+#include <QToolButton>
 
 namespace Layouting {
 
@@ -902,6 +903,11 @@ void Label::onLinkHovered(QObject *guard, const std::function<void (const QStrin
     QObject::connect(access(this), &QLabel::linkHovered, guard, func);
 }
 
+void Label::onLinkActivated(QObject *guard, const std::function<void(const QString &)> &func)
+{
+    QObject::connect(access(this), &QLabel::linkActivated, guard, func);
+}
+
 // Group
 
 Group::Group(std::initializer_list<I> ps)
@@ -1096,6 +1102,19 @@ ToolBar::ToolBar(std::initializer_list<I> ps)
     access(this)->setOrientation(Qt::Horizontal);
 }
 
+// ToolButton
+
+ToolButton::ToolButton(std::initializer_list<I> ps)
+{
+    ptr = new Implementation;
+    apply(this, ps);
+}
+
+void ToolButton::setDefaultAction(QAction *action)
+{
+    access(this)->setDefaultAction(action);
+}
+
 // TabWidget
 
 TabWidget::TabWidget(std::initializer_list<I> ps)
@@ -1156,6 +1175,11 @@ int ProgressBar::value() const
 void ProgressBar::setValue(int value)
 {
     access(this)->setValue(value);
+}
+
+void MarkdownBrowser::setViewportMargins(int left, int top, int right, int bottom)
+{
+    access(this)->setMargins(QMargins(left, top, right, bottom));
 }
 
 // Special If

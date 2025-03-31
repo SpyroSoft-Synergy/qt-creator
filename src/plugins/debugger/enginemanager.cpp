@@ -14,6 +14,7 @@
 #include <coreplugin/modemanager.h>
 
 #include <utils/basetreeview.h>
+#include <utils/stylehelper.h>
 #include <utils/treemodel.h>
 #include <utils/qtcassert.h>
 
@@ -138,6 +139,7 @@ public:
     {
         m_proxyModel->setSourceModel(sourceModel);
 
+        StyleHelper::setPanelWidget(m_engineChooser);
         m_engineChooser->setModel(m_proxyModel);
         m_engineChooser->setIconSize(QSize(0, 0));
         if (hideSwitcherUnlessNeeded)
@@ -263,7 +265,6 @@ public:
     QPointer<ModelChooser> m_engineDAPChooser;
 
     QList<PerspectiveItem> m_perspectives;
-    bool m_shuttingDown = false;
 
     // This contains the contexts that need to be removed when switching
     // away from the current engine item. Since the plugin itself adds
@@ -627,17 +628,22 @@ QPointer<DebuggerEngine> EngineManager::currentEngine()
     return d->m_currentItem ? d->m_currentItem->m_engine : nullptr;
 }
 
+static int s_runningEngineCount = 0;
+
 bool EngineManager::shutDown()
 {
-    d->m_shuttingDown = true;
-    bool anyEngineAborting = false;
     for (DebuggerEngine *engine : EngineManager::engines()) {
         if (engine && engine->state() != Debugger::DebuggerNotReady) {
+            ++s_runningEngineCount;
+            connect(engine, &DebuggerEngine::engineFinished, instance(), [] {
+                if (--s_runningEngineCount == 0) {
+                    emit instance()->shutDownCompleted();
+                }
+            });
             engine->abortDebugger();
-            anyEngineAborting = true;
         }
     }
-    return anyEngineAborting;
+    return s_runningEngineCount > 0;
 }
 
 } // Debugger::Internal

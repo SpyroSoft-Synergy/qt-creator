@@ -3,8 +3,12 @@
 
 #include "buildsystem.h"
 
+#include "buildaspects.h"
 #include "buildconfiguration.h"
+#include "buildsteplist.h"
+#include "deployconfiguration.h"
 #include "extracompiler.h"
+#include "makestep.h"
 #include "projectexplorer.h"
 #include "projectexplorertr.h"
 #include "projectmanager.h"
@@ -14,10 +18,6 @@
 
 #include <coreplugin/messagemanager.h>
 #include <coreplugin/outputwindow.h>
-
-#include <projectexplorer/buildaspects.h>
-#include <projectexplorer/buildsteplist.h>
-#include <projectexplorer/makestep.h>
 
 #include <utils/algorithm.h>
 #include <utils/qtcassert.h>
@@ -67,6 +67,11 @@ BuildSystem::~BuildSystem()
     delete d;
 }
 
+QString BuildSystem::name() const
+{
+    return project()->buildSystemName();
+}
+
 Project *BuildSystem::project() const
 {
     return d->m_buildConfiguration->project();
@@ -93,7 +98,11 @@ void BuildSystem::emitParsingStarted()
 
     d->m_isParsing = true;
     emit parsingStarted();
-    emit target()->parsingStarted();
+    emit project()->anyParsingStarted();
+    if (this == activeBuildSystemForActiveProject())
+        emit ProjectManager::instance()->parsingStartedActive(this);
+    if (this == activeBuildSystemForCurrentProject())
+        emit ProjectManager::instance()->parsingStartedCurrent(this);
 }
 
 void BuildSystem::emitParsingFinished(bool success)
@@ -105,7 +114,12 @@ void BuildSystem::emitParsingFinished(bool success)
     d->m_isParsing = false;
     d->m_hasParsingData = success;
     emit parsingFinished(success);
-    emit target()->parsingFinished(success);
+    emit project()->anyParsingFinished(success);
+    emit ProjectManager::instance()->projectFinishedParsing(project());
+    if (this == activeBuildSystemForActiveProject())
+        emit ProjectManager::instance()->parsingFinishedActive(success, this);
+    if (this == activeBuildSystemForCurrentProject())
+        emit ProjectManager::instance()->parsingFinishedCurrent(success, this);
 }
 
 FilePath BuildSystem::projectFilePath() const
@@ -294,12 +308,15 @@ void BuildSystem::setDeploymentData(const DeploymentData &deploymentData)
 {
     if (d->m_deploymentData != deploymentData) {
         d->m_deploymentData = deploymentData;
-        emit target()->deploymentDataChanged();
+        emit deploymentDataChanged();
     }
 }
 
 DeploymentData BuildSystem::deploymentData() const
 {
+    const DeployConfiguration * const dc = buildConfiguration()->activeDeployConfiguration();
+    if (dc && dc->usesCustomDeploymentData())
+        return dc->customDeploymentData();
     return d->m_deploymentData;
 }
 
@@ -327,7 +344,7 @@ void BuildSystem::setRootProjectNode(std::unique_ptr<ProjectNode> &&root)
 
 void BuildSystem::emitBuildSystemUpdated()
 {
-    emit target()->buildSystemUpdated(this);
+    emit updated();
 }
 
 void BuildSystem::setExtraData(const QString &buildKey, Utils::Id dataKey, const QVariant &data)

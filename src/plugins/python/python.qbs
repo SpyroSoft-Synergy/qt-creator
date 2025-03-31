@@ -21,6 +21,8 @@ QtcPlugin {
             "../../libs/3rdparty/toml11/toml.hpp",
             "pipsupport.cpp",
             "pipsupport.h",
+            "pyprojecttoml.cpp",
+            "pyprojecttoml.h",
             "pyside.cpp",
             "pyside.h",
             "pythonbuildconfiguration.cpp",
@@ -56,6 +58,15 @@ QtcPlugin {
             "pythonutils.h",
             "pythonwizardpage.cpp",
             "pythonwizardpage.h",
+        ]
+    }
+
+    QtcTestFiles {
+        prefix: "tests/"
+        files: [
+            "pyprojecttoml_test.cpp",
+            "pyprojecttoml_test.h",
+            "testfiles/testfiles.qrc",
         ]
     }
 }

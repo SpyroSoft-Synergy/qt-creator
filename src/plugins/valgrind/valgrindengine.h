@@ -22,14 +22,22 @@ public:
     void stop() override;
 
 protected:
-    virtual void addToolArguments(Utils::CommandLine &cmd) const = 0;
+    void setValgrindCommand(const Utils::CommandLine &command) { m_valgrindCommand = command; }
 
     ValgrindSettings m_settings{false};
+    Utils::CommandLine m_valgrindCommand;
     ValgrindProcess m_runner;
 
 private:
     QString m_progressTitle;
     QFutureInterface<void> m_progress;
 };
+
+Tasking::ExecutableItem initValgrindRecipe(const Tasking::Storage<ValgrindSettings> &storage,
+                                           ProjectExplorer::RunControl *runControl);
+void setupValgrindProcess(ValgrindProcess *process, ProjectExplorer::RunControl *runControl,
+                          const Utils::CommandLine &valgrindCommand);
+Utils::CommandLine defaultValgrindCommand(ProjectExplorer::RunControl *runControl,
+                                          const ValgrindSettings &settings);
 
 } // Valgrind::Internal

@@ -20,6 +20,7 @@ add_qtc_plugin(Lua
     bindings/qt.cpp
     bindings/qtcprocess.cpp
     bindings/settings.cpp
+    bindings/taskhub.cpp
     bindings/texteditor.cpp
     bindings/translate.cpp
     bindings/utils.cpp

@@ -897,7 +897,7 @@ bool DesktopDeviceFileAccess::hasHardLinks(const FilePath &filePath) const
 #ifdef Q_OS_UNIX
     struct stat s
     {};
-    const int r = stat(filePath.absoluteFilePath().toUrlishString().toLocal8Bit().constData(), &s);
+    const int r = stat(filePath.absoluteFilePath().path().toLocal8Bit().constData(), &s);
     if (r == 0) {
         // check for hardlinks because these would break without the atomic write implementation
         if (s.st_nlink > 1)
@@ -1463,10 +1463,11 @@ expected_str<QByteArray> UnixDeviceFileAccess::fileContents(const FilePath &file
     }
 #ifndef UTILS_STATIC_LIBRARY
     const FilePath dd = filePath.withNewPath("dd");
+    using namespace std::literals::chrono_literals;
 
     Process p;
     p.setCommand({dd, args, OsType::OsTypeLinux});
-    p.runBlocking();
+    p.runBlocking(0s); // Run forever
     if (p.exitCode() != 0) {
         return make_unexpected(Tr::tr("Failed reading file \"%1\": %2")
                                    .arg(filePath.toUserOutput(), p.readAllStandardError()));
@@ -1740,7 +1741,7 @@ bool UnixDeviceFileAccess::iterateWithFind(const FilePath &filePath,
     if (entries.front() == filePath.path())
         entries.pop_front();
 
-    for (const QString &entry : entries) {
+    for (const QString &entry : std::as_const(entries)) {
         if (toFilePath(entry) == IterationPolicy::Stop)
             break;
     }

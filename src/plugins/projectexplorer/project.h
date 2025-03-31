@@ -61,6 +61,7 @@ public:
     Project(const QString &mimeType, const Utils::FilePath &fileName);
     ~Project() override;
 
+    QString buildSystemName() const;
     QString displayName() const;
     Utils::Id id() const;
 
@@ -96,6 +97,7 @@ public:
     Target *target(Utils::Id id) const;
     Target *target(Kit *k) const;
     void setActiveTarget(Target *target, SetActive cascade);
+    void setActiveBuildConfiguration(BuildConfiguration *bc, SetActive cascade);
 
     Kit *activeKit() const;
     RunConfiguration *activeRunConfiguration() const;
@@ -212,6 +214,8 @@ signals:
     void removedTarget(ProjectExplorer::Target *target);
     void addedTarget(ProjectExplorer::Target *target);
 
+    void activeBuildConfigurationChanged(BuildConfiguration *bc);
+
     void vanishedTargetsChanged();
 
     void settingsLoaded();
@@ -219,8 +223,8 @@ signals:
 
     void projectLanguagesUpdated();
 
-    void anyParsingStarted(Target *target);
-    void anyParsingFinished(Target *target, bool success);
+    void anyParsingStarted();
+    void anyParsingFinished(bool success);
 
     void rootProjectDirectoryChanged();
 
@@ -242,11 +246,13 @@ protected:
     void setSupportsBuilding(bool value);
 
     template <typename BuildSystemImpl>
-    void setBuildSystemCreator() {
+    void setBuildSystemCreator(const QString &name) {
+        setBuildSystemName(name);
         setBuildSystemCreator([](BuildConfiguration *bc) { return new BuildSystemImpl(bc); });
     }
 
 private:
+    void setBuildSystemName(const QString &name);
     void setBuildSystemCreator(const std::function<BuildSystem *(BuildConfiguration *)> &creator);
 
     void addTarget(std::unique_ptr<Target> &&target);

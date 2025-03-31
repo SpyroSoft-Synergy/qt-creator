@@ -4,6 +4,7 @@ add_qtc_plugin(Python
   SOURCES
     ../../libs/3rdparty/toml11/toml.hpp
     pipsupport.cpp pipsupport.h
+    pyprojecttoml.cpp pyprojecttoml.h
     pyside.cpp pyside.h
     pythonbuildconfiguration.cpp pythonbuildconfiguration.h
     pysideuicextracompiler.cpp pysideuicextracompiler.h
@@ -24,4 +25,12 @@ add_qtc_plugin(Python
     pythontr.h
     pythonutils.cpp pythonutils.h
     pythonwizardpage.cpp pythonwizardpage.h
+)
+
+extend_qtc_plugin(Python
+  CONDITION WITH_TESTS
+  SOURCES
+    tests/pyprojecttoml_test.cpp
+    tests/pyprojecttoml_test.h
+    tests/testfiles/testfiles.qrc
 )

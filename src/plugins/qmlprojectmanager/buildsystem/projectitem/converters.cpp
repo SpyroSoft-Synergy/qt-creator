@@ -29,7 +29,7 @@ QString jsonToQmlProject(const QJsonObject &rootObject)
     QJsonObject versionConfig = rootObject["versions"].toObject();
     QJsonObject environmentConfig = rootObject["environment"].toObject();
     QJsonObject deploymentConfig = rootObject["deployment"].toObject();
-    QJsonArray filesConfig = rootObject["fileGroups"].toArray();
+    const QJsonArray filesConfig = rootObject["fileGroups"].toArray();
     QJsonObject otherProperties = rootObject["otherProperties"].toObject();
 
     QJsonObject mcuObject = rootObject["mcu"].toObject();
@@ -128,7 +128,7 @@ QString jsonToQmlProject(const QJsonObject &rootObject)
         } else if (nodeName.toLower() == "javascriptfiles") {
             filter = javaScriptFilesFilter;
         }
-        for (const QString &entry : filter) {
+        for (const QString &entry : std::as_const(filter)) {
             filters.removeOne(entry);
         }
         appendString("filter", filters.join(";"));

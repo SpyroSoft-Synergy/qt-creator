@@ -81,62 +81,71 @@ static QString noDebuggerInKitMessage()
    return Tr::tr("The kit does not have a debugger set.");
 }
 
-class GlueInterface : public QObject
+class EnginesDriver : public QObject
 {
     Q_OBJECT
 
+public:
+    ~EnginesDriver() { clearEngines(); }
+
+    Result setupEngines(RunControl *runControl, const DebuggerRunParameters &rp);
+    Result checkBreakpoints() const;
+    QString debuggerName() const
+    {
+        return Utils::transform<QStringList>(m_engines, &DebuggerEngine::objectName).join(" ");
+    }
+    QString startParameters() const
+    {
+        return m_engines.isEmpty() ? QString() : m_engines.first()->formatStartParameters();
+    }
+    bool isRunning() const { return m_runningEngines > 0; }
+    void start();
+    void stop()
+    {
+        Utils::reverseForeach(m_engines, [](DebuggerEngine *engine) { engine->quitDebugger(); });
+    }
+    void showMessage(const QString &msg, int channel = LogDebug, int timeout = -1);
+
 signals:
+    void done(DoneResult result);
     void interruptTerminalRequested();
     void kickoffTerminalProcessRequested();
+    void started();
+
+private:
+    void clearEngines()
+    {
+        qDeleteAll(m_engines);
+        m_engines.clear();
+    }
+
+    RunControl *m_runControl = nullptr;
+    QList<QPointer<Internal::DebuggerEngine>> m_engines;
+    int m_runningEngines = 0;
+    int m_snapshotCounter = 0;
 };
 
 class DebuggerRunToolPrivate
 {
 public:
-    DebuggerRunTool *q = nullptr;
-
-    void showMessage(const QString &msg, int channel = LogDebug, int timeout = -1);
-
-    ExecutableItem coreFileRecipe();
-    ExecutableItem terminalRecipe(const SingleBarrier &barrier);
+    ExecutableItem coreFileRecipe(const Storage<FilePath> &tempCoreFileStorage);
+    ExecutableItem terminalRecipe(const SingleBarrier &barrier,
+                                  const Storage<EnginesDriver> &driverStorage);
     ExecutableItem fixupParamsRecipe();
-    ExecutableItem debugServerRecipe();
+    ExecutableItem debugServerRecipe(const SingleBarrier &barrier);
+    ExecutableItem startEnginesRecipe(const Storage<EnginesDriver> &driverStorage);
+    ExecutableItem finishEnginesRecipe(const Storage<EnginesDriver> &driverStorage);
 
-    int snapshotCounter = 0;
-    // int engineStartsNeeded = 0;
-    int engineStopsNeeded = 0;
-
+    DebuggerRunTool *q = nullptr;
     DebuggerRunParameters m_runParameters;
 
-    // Core unpacker
-    FilePath m_tempCoreFilePath; // TODO: Enclose in the recipe storage when all tasks are there.
-
     // TaskTree
-    std::unique_ptr<GlueInterface> m_glue; // Enclose in the recipe storage when all tasks are there.
-    Tasking::TaskTreeRunner m_taskTreeRunner;
+    Tasking::TaskTreeRunner m_taskTreeRunner = {};
 };
 
 } // namespace Internal
 
-void DebuggerRunTool::start()
-{
-    d->m_glue.reset(new GlueInterface);
-
-    const auto barrierKicker = [this](const SingleBarrier &barrier) {
-        return d->terminalRecipe(barrier);
-    };
-
-    const Group recipe {
-        d->coreFileRecipe(),
-        When (barrierKicker) >> Do {
-            d->fixupParamsRecipe(),
-            d->debugServerRecipe()
-        }
-    };
-    d->m_taskTreeRunner.start(recipe);
-}
-
-ExecutableItem DebuggerRunToolPrivate::coreFileRecipe()
+ExecutableItem DebuggerRunToolPrivate::coreFileRecipe(const Storage<FilePath> &tempCoreFileStorage)
 {
     const FilePath coreFile = m_runParameters.coreFile();
     if (!coreFile.endsWith(".gz") && !coreFile.endsWith(".lzo"))
@@ -144,21 +153,21 @@ ExecutableItem DebuggerRunToolPrivate::coreFileRecipe()
 
     const Storage<QFile> storage; // tempCoreFile
 
-    const auto onSetup = [this, storage, coreFile](Process &process) {
+    const auto onSetup = [this, storage, coreFile, tempCoreFileStorage](Process &process) {
         {
             TemporaryFile tmp("tmpcore-XXXXXX");
             QTC_CHECK(tmp.open());
-            m_tempCoreFilePath = FilePath::fromString(tmp.fileName());
+            *tempCoreFileStorage = FilePath::fromString(tmp.fileName());
         }
         QFile *tempCoreFile = storage.activeStorage();
         process.setWorkingDirectory(TemporaryDirectory::masterDirectoryFilePath());
         const QString msg = Tr::tr("Unpacking core file to %1");
-        q->appendMessage(msg.arg(m_tempCoreFilePath.toUserOutput()), LogMessageFormat);
+        q->appendMessage(msg.arg(tempCoreFileStorage->toUserOutput()), LogMessageFormat);
 
         if (coreFile.endsWith(".lzo")) {
-            process.setCommand({"lzop", {"-o", m_tempCoreFilePath.path(), "-x", coreFile.path()}});
+            process.setCommand({"lzop", {"-o", tempCoreFileStorage->path(), "-x", coreFile.path()}});
         } else { // ".gz"
-            tempCoreFile->setFileName(m_tempCoreFilePath.path());
+            tempCoreFile->setFileName(tempCoreFileStorage->path());
             QTC_CHECK(tempCoreFile->open(QFile::WriteOnly));
             QObject::connect(&process, &Process::readyReadStandardOutput, &process,
                              [tempCoreFile, processPtr = &process] {
@@ -168,9 +177,9 @@ ExecutableItem DebuggerRunToolPrivate::coreFileRecipe()
         }
     };
 
-    const auto onDone = [this, storage](DoneWith result) {
+    const auto onDone = [this, storage, tempCoreFileStorage](DoneWith result) {
         if (result == DoneWith::Success)
-            m_runParameters.setCoreFilePath(m_tempCoreFilePath);
+            m_runParameters.setCoreFilePath(*tempCoreFileStorage);
         else
             q->reportFailure("Error unpacking " + m_runParameters.coreFile().toUserOutput());
         if (storage->isOpen())
@@ -183,7 +192,8 @@ ExecutableItem DebuggerRunToolPrivate::coreFileRecipe()
     };
 }
 
-ExecutableItem DebuggerRunToolPrivate::terminalRecipe(const SingleBarrier &barrier)
+ExecutableItem DebuggerRunToolPrivate::terminalRecipe(const SingleBarrier &barrier,
+                                                      const Storage<EnginesDriver> &driverStorage)
 {
     const auto useTerminal = [this] {
         const bool useCdbConsole = m_runParameters.cppEngineType() == CdbEngineType
@@ -195,7 +205,7 @@ ExecutableItem DebuggerRunToolPrivate::terminalRecipe(const SingleBarrier &barri
         return m_runParameters.useTerminal();
     };
 
-    const auto onSetup = [this, barrier](Process &process) {
+    const auto onSetup = [this, barrier, driverStorage](Process &process) {
         ProcessRunData stub = m_runParameters.inferior();
         if (m_runParameters.runAsRoot()) {
             process.setRunAsRoot(true);
@@ -211,9 +221,10 @@ ExecutableItem DebuggerRunToolPrivate::terminalRecipe(const SingleBarrier &barri
             barrier->advance();
         });
 
-        QObject::connect(m_glue.get(), &GlueInterface::interruptTerminalRequested,
+        EnginesDriver *driver = driverStorage.activeStorage();
+        QObject::connect(driver, &EnginesDriver::interruptTerminalRequested,
                          &process, &Process::interrupt);
-        QObject::connect(m_glue.get(), &GlueInterface::kickoffTerminalProcessRequested,
+        QObject::connect(driver, &EnginesDriver::kickoffTerminalProcessRequested,
                          &process, &Process::kickoffProcess);
     };
     const auto onDone = [this](const Process &process, DoneWith result) {
@@ -237,8 +248,8 @@ ExecutableItem DebuggerRunToolPrivate::fixupParamsRecipe()
     return Sync([this] {
         TaskHub::clearTasks(Constants::TASK_CATEGORY_DEBUGGER_RUNTIME);
 
-        if (q->runControl()->usesDebugChannel() && !m_runParameters.skipDebugServer())
-            m_runParameters.setRemoteChannel(q->runControl()->debugChannel());
+        if (q->runControl()->usesDebugChannel())
+            m_runParameters.setRemoteChannel(q->runControl()->debugChannel().toString());
 
         if (q->runControl()->usesQmlChannel()) {
             m_runParameters.setQmlServer(q->runControl()->qmlChannel());
@@ -297,17 +308,34 @@ ExecutableItem DebuggerRunToolPrivate::fixupParamsRecipe()
             return false;
         }
 
+        Utils::globalMacroExpander()->registerFileVariables(
+            "DebuggedExecutable", Tr::tr("Debugged executable"),
+            [this] { return m_runParameters.inferior().command.executable(); });
+
+        q->runControl()->setDisplayName(m_runParameters.displayName());
+
+        if (auto interpreterAspect = q->runControl()->aspectData<FilePathAspect>()) {
+            if (auto mainScriptAspect = q->runControl()->aspectData<MainScriptAspect>()) {
+                const FilePath mainScript = mainScriptAspect->filePath;
+                const FilePath interpreter = interpreterAspect->filePath;
+                if (!interpreter.isEmpty() && mainScript.endsWith(".py")) {
+                    m_runParameters.setMainScript(mainScript);
+                    m_runParameters.setInterpreter(interpreter);
+                }
+            }
+        }
+
         return true;
     });
 }
 
-ExecutableItem DebuggerRunToolPrivate::debugServerRecipe()
+ExecutableItem DebuggerRunToolPrivate::debugServerRecipe(const SingleBarrier &barrier)
 {
     const auto useDebugServer = [this] {
         return q->runControl()->usesDebugChannel() && !m_runParameters.skipDebugServer();
     };
 
-    const auto onSetup = [this](Process &process) {
+    const auto onSetup = [this, barrier](Process &process) {
         process.setUtf8Codec();
         CommandLine commandLine = m_runParameters.inferior().command;
         CommandLine cmd;
@@ -414,8 +442,8 @@ ExecutableItem DebuggerRunToolPrivate::debugServerRecipe()
             q->runControl()->postMessage(msg, StdErrFormat, false);
         });
 
-        QObject::connect(&process, &Process::started, q, [this] {
-            q->continueAfterDebugServerStart();
+        QObject::connect(&process, &Process::started, q, [barrier = barrier->barrier()] {
+            barrier->advance();
         });
 
         return SetupResult::Continue;
@@ -432,8 +460,66 @@ ExecutableItem DebuggerRunToolPrivate::debugServerRecipe()
         If (useDebugServer) >> Then {
             ProcessTask(onSetup, onDone)
         } >> Else {
-            Sync([this] { q->continueAfterDebugServerStart(); })
+            Sync([barrier] { barrier->barrier()->advance(); })
         }
+    };
+}
+
+static ExecutableItem doneAwaiter(const Storage<EnginesDriver> &driverStorage)
+{
+    return BarrierTask([driverStorage](Barrier &barrier) {
+        QObject::connect(driverStorage.activeStorage(), &EnginesDriver::done, &barrier, &Barrier::stopWithResult,
+                         static_cast<Qt::ConnectionType>(Qt::QueuedConnection | Qt::SingleShotConnection));
+    });
+}
+
+ExecutableItem DebuggerRunToolPrivate::startEnginesRecipe(const Storage<EnginesDriver> &driverStorage)
+{
+    const auto setupEngines = [this, driverStorage] {
+        EnginesDriver *driver = driverStorage.activeStorage();
+        RunControl *rc = q->runControl();
+        if (Result res = driver->setupEngines(rc, m_runParameters); !res) {
+            q->reportFailure(res.error());
+            return false;
+        }
+        if (Result res = driver->checkBreakpoints(); !res) {
+            driver->showMessage(res.error(), LogWarning);
+            if (settings().showUnsupportedBreakpointWarning()) {
+                bool doNotAskAgain = false;
+                CheckableDecider decider(&doNotAskAgain);
+                CheckableMessageBox::information(Tr::tr("Debugger"), res.error(), decider, QMessageBox::Ok);
+                if (doNotAskAgain) {
+                    settings().showUnsupportedBreakpointWarning.setValue(false);
+                    settings().showUnsupportedBreakpointWarning.writeSettings();
+                }
+            }
+        }
+        rc->postMessage(Tr::tr("Debugging %1 ...").arg(m_runParameters.inferior().command.toUserOutput()),
+                        NormalMessageFormat);
+        const QString message = Tr::tr("Starting debugger \"%1\" for ABI \"%2\"...")
+                                .arg(driver->debuggerName(), m_runParameters.toolChainAbi().toString());
+        DebuggerMainWindow::showStatusMessage(message, 10000);
+        driver->showMessage(driver->startParameters(), LogDebug);
+        driver->showMessage(DebuggerSettings::dump(), LogDebug);
+
+        driver->start();
+        QObject::connect(driver, &EnginesDriver::started,
+                         runStorage().activeStorage(), &RunInterface::started);
+        return true;
+    };
+
+    return If (setupEngines) >> Then {
+        doneAwaiter(driverStorage)
+    };
+}
+
+ExecutableItem DebuggerRunToolPrivate::finishEnginesRecipe(const Storage<EnginesDriver> &driverStorage)
+{
+    const auto isRunning = [driverStorage] { return driverStorage->isRunning(); };
+
+    return If (isRunning) >> Then {
+        Sync([driverStorage] { driverStorage->stop(); }),
+        doneAwaiter(driverStorage)
     };
 }
 
@@ -498,92 +584,99 @@ static int newRunId()
     return ++toolRunCount;
 }
 
-void DebuggerRunTool::continueAfterDebugServerStart()
+Result EnginesDriver::setupEngines(RunControl *runControl, const DebuggerRunParameters &rp)
 {
-    Utils::globalMacroExpander()->registerFileVariables(
-                "DebuggedExecutable", Tr::tr("Debugged executable"),
-                [this] { return d->m_runParameters.inferior().command.executable(); }
-    );
+    m_runControl = runControl;
+    clearEngines();
+    const auto engines = createEngines(runControl, rp);
+    if (!engines)
+        return Result::Error(engines.error());
 
-    runControl()->setDisplayName(d->m_runParameters.displayName());
-
-    if (auto interpreterAspect = runControl()->aspectData<FilePathAspect>()) {
-        if (auto mainScriptAspect = runControl()->aspectData<MainScriptAspect>()) {
-            const FilePath mainScript = mainScriptAspect->filePath;
-            const FilePath interpreter = interpreterAspect->filePath;
-            if (!interpreter.isEmpty() && mainScript.endsWith(".py")) {
-                d->m_runParameters.setMainScript(mainScript);
-                d->m_runParameters.setInterpreter(interpreter);
-            }
-        }
-    }
-
-    const auto engines = createEngines(runControl(), runParameters());
-    if (!engines) {
-        reportFailure(engines.error());
-        return;
-    }
     m_engines = *engines;
-
     const QString runId = QString::number(newRunId());
-    for (auto engine : m_engines) {
+    for (auto engine : std::as_const(m_engines)) {
         if (engine != m_engines.first())
             engine->setSecondaryEngine();
-        engine->setRunParameters(d->m_runParameters);
+        engine->setRunParameters(rp);
         engine->setRunId(runId);
-        for (auto companion : m_engines) {
+        for (auto companion : std::as_const(m_engines)) {
             if (companion != engine)
                 engine->addCompanionEngine(companion);
         }
+        engine->setDevice(m_runControl->device());
+    }
+
+    return Result::Ok;
+}
+
+Result EnginesDriver::checkBreakpoints() const
+{
+    QStringList unhandledIds;
+    bool hasQmlBreakpoints = false;
+    for (const GlobalBreakpoint &gbp : BreakpointManager::globalBreakpoints()) {
+        if (gbp->isEnabled()) {
+            const BreakpointParameters &bp = gbp->requestedParameters();
+            hasQmlBreakpoints = hasQmlBreakpoints || bp.isQmlFileAndLineBreakpoint();
+            const auto engineAcceptsBp = [bp](const DebuggerEngine *engine) {
+                return engine->acceptsBreakpoint(bp);
+            };
+            if (!Utils::anyOf(m_engines, engineAcceptsBp))
+                unhandledIds.append(gbp->displayName());
+        }
+    }
+
+    if (unhandledIds.isEmpty())
+        return Result::Ok;
+
+    QString warningMessage = Tr::tr("Some breakpoints cannot be handled by the debugger "
+                                    "languages currently active, and will be ignored.<p>"
+                                    "Affected are breakpoints %1").arg(unhandledIds.join(", "));
+    if (hasQmlBreakpoints) {
+        warningMessage += "<p>" + Tr::tr("QML debugging needs to be enabled both in the Build "
+                                         "and the Run settings.");
+    }
+    return Result::Error(warningMessage);
+}
+
+void EnginesDriver::start()
+{
+    const QString runId = QString::number(newRunId());
+    for (auto engine : std::as_const(m_engines)) {
         connect(engine, &DebuggerEngine::interruptTerminalRequested,
-                d->m_glue.get(), &GlueInterface::interruptTerminalRequested);
+                this, &EnginesDriver::interruptTerminalRequested);
         connect(engine, &DebuggerEngine::kickoffTerminalProcessRequested,
-                d->m_glue.get(), &GlueInterface::kickoffTerminalProcessRequested);
-        engine->setDevice(runControl()->device());
-        auto rc = runControl();
-        connect(engine, &DebuggerEngine::requestRunControlFinish, rc, [rc] {
-                rc->setAutoDeleteOnStop(true);
-                rc->initiateStop();
-            }, Qt::QueuedConnection);
-        connect(engine, &DebuggerEngine::requestRunControlStop, rc, &RunControl::initiateStop);
+                this, &EnginesDriver::kickoffTerminalProcessRequested);
+        connect(engine, &DebuggerEngine::requestRunControlStop, m_runControl, &RunControl::initiateStop);
 
         connect(engine, &DebuggerEngine::engineStarted, this, [this, engine] {
-            ++d->engineStopsNeeded;
-            // Correct:
-            // if (--d->engineStartsNeeded == 0) {
-            //     EngineManager::activateDebugMode();
-            //     reportStarted();
-            // }
-
-            // Feels better, as the QML Engine might attach late or not at all.
+            ++m_runningEngines;
             if (engine->isPrimaryEngine()) {
                 EngineManager::activateDebugMode();
-                reportStarted();
+                emit started();
             }
         });
 
         connect(engine, &DebuggerEngine::engineFinished, this, [this, engine] {
             engine->prepareForRestart();
-            if (--d->engineStopsNeeded == 0) {
-                const QString cmd = d->m_runParameters.inferior().command.toUserOutput();
+            if (--m_runningEngines == 0) {
+                const QString cmd = engine->runParameters().inferior().command.toUserOutput();
                 const QString msg = engine->runParameters().exitCode() // Main engine.
                                         ? Tr::tr("Debugging of %1 has finished with exit code %2.")
                                               .arg(cmd)
                                               .arg(*engine->runParameters().exitCode())
                                         : Tr::tr("Debugging of %1 has finished.").arg(cmd);
-                appendMessage(msg, NormalMessageFormat);
-                reportStopped();
+                m_runControl->postMessage(msg, NormalMessageFormat);
+                emit done(engine->runParameters().exitCode() ? DoneResult::Error : DoneResult::Success);
             }
         });
-        connect(engine, &DebuggerEngine::postMessageRequested, rc, &RunControl::postMessage);
-        // ++d->engineStartsNeeded;
+        connect(engine, &DebuggerEngine::postMessageRequested, m_runControl, &RunControl::postMessage);
 
         if (engine->isPrimaryEngine()) {
             connect(engine, &DebuggerEngine::attachToCoreRequested, this, [this](const QString &coreFile) {
                 auto rc = new RunControl(ProjectExplorer::Constants::DEBUG_RUN_MODE);
-                rc->copyDataFromRunControl(runControl());
+                rc->copyDataFromRunControl(m_runControl);
                 rc->resetDataForAttachToCore();
-                auto name = QString(Tr::tr("%1 - Snapshot %2").arg(runControl()->displayName()).arg(++d->snapshotCounter));
+                auto name = QString(Tr::tr("%1 - Snapshot %2").arg(m_runControl->displayName()).arg(++m_snapshotCounter));
                 auto debugger = new DebuggerRunTool(rc);
                 DebuggerRunParameters &rp = debugger->runParameters();
                 rp.setStartMode(AttachToCore);
@@ -595,69 +688,92 @@ void DebuggerRunTool::continueAfterDebugServerStart()
             });
         }
     }
+    Utils::reverseForeach(m_engines, [](DebuggerEngine *engine) { engine->start(); });
+}
 
-    if (d->m_runParameters.startMode() != AttachToCore) {
-        QStringList unhandledIds;
-        bool hasQmlBreakpoints = false;
-        for (const GlobalBreakpoint &gbp : BreakpointManager::globalBreakpoints()) {
-            if (gbp->isEnabled()) {
-                const BreakpointParameters &bp = gbp->requestedParameters();
-                hasQmlBreakpoints = hasQmlBreakpoints || bp.isQmlFileAndLineBreakpoint();
-                auto engineAcceptsBp = [bp](const DebuggerEngine *engine) {
-                    return engine->acceptsBreakpoint(bp);
-                };
-                if (!Utils::anyOf(m_engines, engineAcceptsBp))
-                    unhandledIds.append(gbp->displayName());
-            }
-        }
-        if (!unhandledIds.isEmpty()) {
-            QString warningMessage = Tr::tr("Some breakpoints cannot be handled by the debugger "
-                                            "languages currently active, and will be ignored.<p>"
-                                            "Affected are breakpoints %1")
-                                         .arg(unhandledIds.join(", "));
+void EnginesDriver::showMessage(const QString &msg, int channel, int timeout)
+{
+    if (channel == ConsoleOutput)
+        debuggerConsole()->printItem(ConsoleItem::DefaultType, msg);
 
-            if (hasQmlBreakpoints) {
-                warningMessage += "<p>"
-                                  + Tr::tr("QML debugging needs to be enabled both in the Build "
-                                           "and the Run settings.");
-            }
+    QTC_ASSERT(!m_engines.isEmpty(), qDebug() << msg; return);
 
-            d->showMessage(warningMessage, LogWarning);
+    for (auto engine : std::as_const(m_engines))
+        engine->showMessage(msg, channel, timeout);
+    switch (channel) {
+    case AppOutput:
+        m_runControl->postMessage(msg, StdOutFormat);
+        break;
+    case AppError:
+        m_runControl->postMessage(msg, StdErrFormat);
+        break;
+    case AppStuff:
+        m_runControl->postMessage(msg, DebugFormat);
+        break;
+    default:
+        break;
+    }
+}
 
-            if (settings().showUnsupportedBreakpointWarning()) {
-                bool doNotAskAgain = false;
-                CheckableDecider decider(&doNotAskAgain);
-                CheckableMessageBox::information(
-                    Tr::tr("Debugger"),
-                    warningMessage,
-                    decider,
-                    QMessageBox::Ok);
-                if (doNotAskAgain) {
-                    settings().showUnsupportedBreakpointWarning.setValue(false);
-                    settings().showUnsupportedBreakpointWarning.writeSettings();
+void DebuggerRunTool::start()
+{
+    const Storage<EnginesDriver> driverStorage;
+    const Storage<FilePath> tempCoreFileStorage;
+
+    const auto onSetup = [this] {
+        RunInterface *iface = runStorage().activeStorage();
+        connect(this, &DebuggerRunTool::canceled, iface, &RunInterface::canceled);
+        connect(iface, &RunInterface::started, this, &RunWorker::reportStarted);
+        d->m_runParameters.setAttachPid(runControl()->attachPid());
+    };
+
+    const auto terminalKicker = [this, driverStorage](const SingleBarrier &barrier) {
+        return d->terminalRecipe(barrier, driverStorage);
+    };
+
+    const auto debugServerKicker = [this](const SingleBarrier &barrier) {
+        return d->debugServerRecipe(barrier);
+    };
+
+    const auto onDone = [this, tempCoreFileStorage] {
+        if (tempCoreFileStorage->exists())
+            tempCoreFileStorage->removeFile();
+        if (d->m_runParameters.isSnapshot() && !d->m_runParameters.coreFile().isEmpty())
+            d->m_runParameters.coreFile().removeFile();
+    };
+
+    const Group recipe {
+        runStorage(),
+        driverStorage,
+        tempCoreFileStorage,
+        continueOnError,
+        onGroupSetup(onSetup),
+        Group {
+            d->coreFileRecipe(tempCoreFileStorage),
+            When (terminalKicker) >> Do {
+                d->fixupParamsRecipe(),
+                When (debugServerKicker) >> Do {
+                    d->startEnginesRecipe(driverStorage)
                 }
             }
-        }
-    }
-
-    appendMessage(Tr::tr("Debugging %1 ...").arg(d->m_runParameters.inferior().command.toUserOutput()),
-                  NormalMessageFormat);
-    const QString debuggerName = Utils::transform<QStringList>(m_engines, &DebuggerEngine::objectName).join(" ");
-
-    const QString message = Tr::tr("Starting debugger \"%1\" for ABI \"%2\"...")
-            .arg(debuggerName).arg(d->m_runParameters.toolChainAbi().toString());
-    DebuggerMainWindow::showStatusMessage(message, 10000);
-
-    d->showMessage(m_engines.first()->formatStartParameters(), LogDebug);
-    d->showMessage(DebuggerSettings::dump(), LogDebug);
-
-    Utils::reverseForeach(m_engines, [](DebuggerEngine *engine) { engine->start(); });
+        }.withCancel(canceler()),
+        d->finishEnginesRecipe(driverStorage),
+        onGroupDone(onDone)
+    };
+    d->m_taskTreeRunner.start(recipe, {}, [this](DoneWith result) {
+        if (result == DoneWith::Success)
+            reportStopped();
+        else
+            reportFailure();
+    });
 }
 
 void DebuggerRunTool::stop()
 {
-    QTC_ASSERT(!m_engines.isEmpty(), reportStopped(); return);
-    Utils::reverseForeach(m_engines, [](DebuggerEngine *engine) { engine->quitDebugger(); });
+    if (!d->m_taskTreeRunner.isRunning())
+        return;
+
+    emit canceled();
 }
 
 void DebuggerRunTool::setupPortsGatherer()
@@ -676,11 +792,8 @@ DebuggerRunParameters &DebuggerRunTool::runParameters()
 
 DebuggerRunTool::DebuggerRunTool(RunControl *runControl)
     : RunWorker(runControl)
-    , d(new DebuggerRunToolPrivate)
+    , d(new DebuggerRunToolPrivate{this, DebuggerRunParameters::fromRunControl(runControl)})
 {
-    d->q = this;
-    d->m_runParameters = DebuggerRunParameters::fromRunControl(runControl);
-
     setId("DebuggerRunTool");
     runControl->setIcon(ProjectExplorer::Icons::DEBUG_START_SMALL_TOOLBAR);
     runControl->setPromptToStop([](bool *optionalPrompt) {
@@ -696,40 +809,7 @@ DebuggerRunTool::DebuggerRunTool(RunControl *runControl)
 
 DebuggerRunTool::~DebuggerRunTool()
 {
-    if (d->m_tempCoreFilePath.exists())
-        d->m_tempCoreFilePath.removeFile();
-
-    if (d->m_runParameters.isSnapshot() && !d->m_runParameters.coreFile().isEmpty())
-        d->m_runParameters.coreFile().removeFile();
-
-    qDeleteAll(m_engines);
-    m_engines.clear();
-
     delete d;
-}
-
-void DebuggerRunToolPrivate::showMessage(const QString &msg, int channel, int timeout)
-{
-    if (channel == ConsoleOutput)
-        debuggerConsole()->printItem(ConsoleItem::DefaultType, msg);
-
-    QTC_ASSERT(!q->m_engines.isEmpty(), qDebug() << msg; return);
-
-    for (auto engine : q->m_engines)
-        engine->showMessage(msg, channel, timeout);
-    switch (channel) {
-    case AppOutput:
-        q->appendMessage(msg, StdOutFormat);
-        break;
-    case AppError:
-        q->appendMessage(msg, StdErrFormat);
-        break;
-    case AppStuff:
-        q->appendMessage(msg, DebugFormat);
-        break;
-    default:
-        break;
-    }
 }
 
 class DebuggerRunWorkerFactory final : public ProjectExplorer::RunWorkerFactory

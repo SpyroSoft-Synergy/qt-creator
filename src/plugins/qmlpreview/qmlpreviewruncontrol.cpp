@@ -5,6 +5,7 @@
 
 #include "qmlpreviewconnectionmanager.h"
 
+#include <projectexplorer/buildconfiguration.h>
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/qmldebugcommandlinearguments.h>
 #include <projectexplorer/target.h>
@@ -18,131 +19,87 @@
 #include <utils/url.h>
 
 using namespace ProjectExplorer;
+using namespace Tasking;
 using namespace Utils;
 
 namespace QmlPreview {
 
-class QmlPreviewRunner : public ProjectExplorer::RunWorker
+static Group qmlPreviewRecipe(RunControl *runControl, QmlPreviewPlugin *plugin,
+                              const QmlPreviewRunnerSetting &settings)
 {
-    Q_OBJECT
+    const auto onTranslationSetup = [settings](Async<void> &task) {
+        if (!settings.refreshTranslationsFunction)
+            return SetupResult::StopWithSuccess;
 
-public:
-    QmlPreviewRunner(ProjectExplorer::RunControl *runControl,
-                     const QmlPreviewRunnerSetting &settings);
+        task.setConcurrentCallData(settings.refreshTranslationsFunction);
+        // Cancel and blocking wait for finished when deleting the translation task.
+        task.setFutureSynchronizer(nullptr);
+        return SetupResult::Continue;
+    };
 
-signals:
-    void loadFile(const QString &previewedFile, const QString &changedFile,
-                  const QByteArray &contents);
-    void language(const QString &locale);
-    void zoom(float zoomFactor);
-    void rerun();
-    void ready();
+    const auto onPreviewSetup = [runControl, plugin, settings](QmlPreviewConnectionManager &task) {
+        task.setFileLoader(settings.fileLoader);
+        task.setFileClassifier(settings.fileClassifier);
+        task.setFpsHandler(settings.fpsHandler);
+        task.setQmlDebugTranslationClientCreator(settings.createDebugTranslationClientMethod);
 
-private:
-    void start() override;
-    void stop() override;
-    QUrl serverUrl() const;
+        QObject::connect(plugin, &QmlPreviewPlugin::updatePreviews,
+                         &task, &QmlPreviewConnectionManager::loadFile);
+        QObject::connect(plugin, &QmlPreviewPlugin::rerunPreviews,
+                         &task, &QmlPreviewConnectionManager::rerun);
+        QObject::connect(plugin, &QmlPreviewPlugin::zoomFactorChanged,
+                         &task, &QmlPreviewConnectionManager::zoom);
+        QObject::connect(plugin, &QmlPreviewPlugin::localeIsoCodeChanged,
+                         &task, &QmlPreviewConnectionManager::language);
 
-    QmlPreviewConnectionManager m_connectionManager;
-    std::unique_ptr<Utils::Async<void>> m_translationUpdater;
-};
+        QObject::connect(&task, &QmlPreviewConnectionManager::connectionOpened,
+                         &task, [task = &task, plugin, settings] {
+            if (settings.zoomFactor > 0)
+                task->zoom(settings.zoomFactor);
+            if (auto multiLanguageAspect = QmlProjectManager::QmlMultiLanguageAspect::current()) {
+                if (!multiLanguageAspect->currentLocale().isEmpty())
+                    task->language(multiLanguageAspect->currentLocale());
+            }
+            plugin->previewCurrentFile();
+        });
 
-QmlPreviewRunner::QmlPreviewRunner(RunControl *runControl, const QmlPreviewRunnerSetting &settings)
-    : RunWorker(runControl)
-{
-    setId("QmlPreviewRunner");
-    m_connectionManager.setFileLoader(settings.fileLoader);
-    m_connectionManager.setFileClassifier(settings.fileClassifier);
-    m_connectionManager.setFpsHandler(settings.fpsHandler);
-    m_connectionManager.setQmlDebugTranslationClientCreator(
-        settings.createDebugTranslationClientMethod);
+        QObject::connect(&task, &QmlPreviewConnectionManager::restart, runControl, [runControl] {
+            if (!runControl->isRunning())
+                return;
 
-    connect(this, &QmlPreviewRunner::loadFile,
-            &m_connectionManager, &QmlPreviewConnectionManager::loadFile);
-    connect(this, &QmlPreviewRunner::rerun,
-            &m_connectionManager, &QmlPreviewConnectionManager::rerun);
+            QObject::connect(runControl, &RunControl::stopped,
+                             ProjectExplorerPlugin::instance(), [runControl] {
+                auto rc = new RunControl(ProjectExplorer::Constants::QML_PREVIEW_RUN_MODE);
+                rc->copyDataFromRunControl(runControl);
+                rc->start();
+            });
 
-    connect(this, &QmlPreviewRunner::zoom,
-            &m_connectionManager, &QmlPreviewConnectionManager::zoom);
-    connect(this, &QmlPreviewRunner::language,
-            &m_connectionManager, &QmlPreviewConnectionManager::language);
+            runControl->initiateStop();
+        });
 
-    connect(&m_connectionManager, &QmlPreviewConnectionManager::connectionOpened,
-            this, [this, settings]() {
-        if (settings.zoomFactor > 0)
-            emit zoom(settings.zoomFactor);
-        if (auto multiLanguageAspect = QmlProjectManager::QmlMultiLanguageAspect::current()) {
-            if (!multiLanguageAspect->currentLocale().isEmpty())
-                emit language(multiLanguageAspect->currentLocale());
-        }
-        emit ready();
-    });
+        task.setBuildConfiguration(runControl->buildConfiguration());
+        task.setServer(runControl->qmlChannel());
+        plugin->addPreview(runControl);
+    };
 
-    connect(&m_connectionManager, &QmlPreviewConnectionManager::restart, runControl, [this, runControl] {
-        if (!runControl->isRunning())
-            return;
+    const auto onDone = [runControl, plugin] {
+        plugin->removePreview(runControl);
+    };
 
-        this->connect(runControl,
-                      &RunControl::stopped,
-                      ProjectExplorerPlugin::instance(),
-                      [runControl] {
-                          auto rc = new RunControl(ProjectExplorer::Constants::QML_PREVIEW_RUN_MODE);
-                          rc->copyDataFromRunControl(runControl);
-                          rc->start();
-                      });
-
-        runControl->initiateStop();
-    });
-
-    if (settings.refreshTranslationsFunction) {
-        m_translationUpdater.reset(new Async<void>);
-        m_translationUpdater->setParent(this);
-        m_translationUpdater->setConcurrentCallData(settings.refreshTranslationsFunction);
-        // Cancel and blocking wait for finished when deleting m_translationUpdater.
-        m_translationUpdater->setFutureSynchronizer(nullptr);
-    }
-}
-
-void QmlPreviewRunner::start()
-{
-    if (m_translationUpdater)
-        m_translationUpdater->start();
-    m_connectionManager.setTarget(runControl()->target());
-    m_connectionManager.connectToServer(runControl()->qmlChannel());
-    reportStarted();
-}
-
-void QmlPreviewRunner::stop()
-{
-    m_translationUpdater.reset();
-    m_connectionManager.disconnectFromServer();
-    reportStopped();
+    return Group {
+        parallel,
+        onGroupSetup([] { emit runStorage()->started(); }),
+        AsyncTask<void>(onTranslationSetup),
+        QmlPreviewConnectionManagerTask(onPreviewSetup),
+        onGroupDone(onDone)
+    }.withCancel(canceler());
 }
 
 QmlPreviewRunWorkerFactory::QmlPreviewRunWorkerFactory(QmlPreviewPlugin *plugin,
                                                        const QmlPreviewRunnerSetting *runnerSettings)
 {
     setProducer([plugin, runnerSettings](RunControl *runControl) {
-        auto runner = new QmlPreviewRunner(runControl, *runnerSettings);
-        QObject::connect(plugin, &QmlPreviewPlugin::updatePreviews,
-                         runner, &QmlPreviewRunner::loadFile);
-        QObject::connect(plugin, &QmlPreviewPlugin::rerunPreviews,
-                         runner, &QmlPreviewRunner::rerun);
-        QObject::connect(runner, &QmlPreviewRunner::ready,
-                         plugin, &QmlPreviewPlugin::previewCurrentFile);
-        QObject::connect(plugin, &QmlPreviewPlugin::zoomFactorChanged,
-                         runner, &QmlPreviewRunner::zoom);
-        QObject::connect(plugin, &QmlPreviewPlugin::localeIsoCodeChanged,
-                         runner, &QmlPreviewRunner::language);
-
-        QObject::connect(runner, &RunWorker::started, plugin, [plugin, runControl] {
-            plugin->addPreview(runControl);
-        });
-        QObject::connect(runner, &RunWorker::stopped, plugin, [plugin, runControl] {
-            plugin->removePreview(runControl);
-        });
-
-        return runner;
+        return new RecipeRunner(runControl, qmlPreviewRecipe(runControl, plugin, *runnerSettings));
     });
     addSupportedRunMode(Constants::QML_PREVIEW_RUNNER);
 }
@@ -168,7 +125,7 @@ LocalQmlPreviewSupportFactory::LocalQmlPreviewSupportFactory()
 
             if (const auto aspect = runControl->aspectData<QmlProjectManager::QmlMainFileAspect>()) {
                 const auto qmlBuildSystem = qobject_cast<QmlProjectManager::QmlBuildSystem *>(
-                    runControl->target()->buildSystem());
+                    runControl->buildConfiguration()->buildSystem());
                 QTC_ASSERT(qmlBuildSystem, return);
 
                 const FilePath mainScript = aspect->mainScript;
@@ -197,5 +154,3 @@ LocalQmlPreviewSupportFactory::LocalQmlPreviewSupportFactory()
 }
 
 } // QmlPreview
-
-#include "qmlpreviewruncontrol.moc"

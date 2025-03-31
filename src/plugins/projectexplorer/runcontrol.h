@@ -140,14 +140,12 @@ public:
 
     void start();
 
-    void setTarget(Target *target);
+    void setBuildConfiguration(BuildConfiguration *bc);
     void setKit(Kit *kit);
 
     void copyDataFromRunConfiguration(RunConfiguration *runConfig);
     void copyDataFromRunControl(RunControl *runControl);
     void resetDataForAttachToCore();
-
-    void setAutoDeleteOnStop(bool autoDelete);
 
     void setRunRecipe(const Tasking::Group &group);
 
@@ -178,7 +176,8 @@ public:
     IDeviceConstPtr device() const;
 
     // FIXME: Try to cut down to amount of functions.
-    Target *target() const;
+    BuildConfiguration *buildConfiguration() const;
+    Target *target() const; // FIXME: Eliminate callers and remove again.
     Project *project() const;
     Kit *kit() const;
     const Utils::MacroExpander *macroExpander() const;
@@ -246,6 +245,9 @@ public:
     void requestWorkerChannel();
     QUrl workerChannel() const;
 
+    void setAttachPid(Utils::ProcessHandle pid);
+    Utils::ProcessHandle attachPid() const;
+
     void showOutputPane();
 
 signals:
@@ -299,26 +301,42 @@ public:
     explicit ProcessRunnerFactory(const QList<Utils::Id> &runConfig);
 };
 
-
 PROJECTEXPLORER_EXPORT
 void addOutputParserFactory(const std::function<Utils::OutputLineParser *(Target *)> &);
 
 PROJECTEXPLORER_EXPORT QList<Utils::OutputLineParser *> createOutputParsers(Target *target);
 
+class PROJECTEXPLORER_EXPORT RunInterface : public QObject
+{
+    Q_OBJECT
+
+signals:
+    void started();  // Recipe -> RunWorker
+    void canceled(); // RunWorker -> Recipe
+};
+
+PROJECTEXPLORER_EXPORT Tasking::Storage<RunInterface> runStorage();
+using Canceler = std::function<std::pair<RunInterface *, void (RunInterface::*)()>()>;
+PROJECTEXPLORER_EXPORT Canceler canceler();
+
 class PROJECTEXPLORER_EXPORT RecipeRunner final : public RunWorker
 {
-public:
-    explicit RecipeRunner(RunControl *runControl)
-        : RunWorker(runControl) {}
+    Q_OBJECT
 
-    void setRecipe(const Tasking::Group &recipe) { m_recipe = recipe; }
+public:
+    RecipeRunner(RunControl *runControl, const Tasking::Group &recipe)
+        : RunWorker(runControl), m_recipe(recipe)
+    {}
+
+signals:
+    void canceled();
 
 private:
     void start() final;
     void stop() final;
 
     Tasking::TaskTreeRunner m_taskTreeRunner;
-    Tasking::Group m_recipe = {};
+    const Tasking::Group m_recipe;
 };
 
 } // namespace ProjectExplorer

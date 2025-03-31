@@ -353,7 +353,7 @@ void FileApiReader::setupCMakeFileApi()
 
     const FilePath replyIndexfile = FileApiParser::scanForCMakeReplyFile(m_parameters.buildDirectory);
     if (!replyIndexfile.isEmpty() && !m_watcher.watchesFile(replyIndexfile))
-        m_watcher.addFile(replyIndexfile.path(), FileSystemWatcher::WatchAllChanges);
+        m_watcher.addFile(replyIndexfile, FileSystemWatcher::WatchAllChanges);
 }
 
 QString FileApiReader::cmakeGenerator() const
@@ -414,7 +414,7 @@ void FileApiReader::cmakeFinishedState(int exitCode)
              m_lastCMakeExitCode != 0);
 }
 
-void FileApiReader::handleReplyIndexFileChange(const QString &indexFile)
+void FileApiReader::handleReplyIndexFileChange(const FilePath &indexFile)
 {
     if (m_isParsing)
         return; // This has been triggered by ourselves, ignore.
@@ -424,7 +424,7 @@ void FileApiReader::handleReplyIndexFileChange(const QString &indexFile)
     if (dir.isEmpty())
         return; // CMake started to fill the result dir, but has not written a result file yet
     QTC_CHECK(dir.isLocal());
-    QTC_ASSERT(dir == FilePath::fromString(indexFile).parentDir(), return);
+    QTC_ASSERT(dir == indexFile.parentDir(), return);
 
     if (m_lastReplyTimestamp.isValid() && reply.lastModified() > m_lastReplyTimestamp) {
         m_lastReplyTimestamp = reply.lastModified();

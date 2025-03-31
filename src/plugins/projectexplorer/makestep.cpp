@@ -4,6 +4,7 @@
 #include "makestep.h"
 
 #include "buildconfiguration.h"
+#include "buildsystem.h"
 #include "devicesupport/devicekitaspects.h"
 #include "devicesupport/idevice.h"
 #include "gnumakeparser.h"
@@ -381,11 +382,10 @@ QWidget *MakeStep::createConfigWidget()
     connect(ProjectExplorerPlugin::instance(), &ProjectExplorerPlugin::settingsChanged,
             widget, updateDetails);
 
-    connect(target(), &Target::kitChanged, widget, updateDetails);
-
+    connect(buildConfiguration(), &BuildConfiguration::kitChanged, widget, updateDetails);
     connect(buildConfiguration(), &BuildConfiguration::environmentChanged, widget, updateDetails);
     connect(buildConfiguration(), &BuildConfiguration::buildDirectoryChanged, widget, updateDetails);
-    connect(target(), &Target::parsingFinished, widget, updateDetails);
+    connect(buildSystem(), &BuildSystem::parsingFinished, widget, updateDetails);
 
     return widget;
 }

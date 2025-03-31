@@ -78,8 +78,6 @@ public:
     void scan(const FilePath &path);
     void scanNext();
 
-    QString name() const final { return QLatin1String("Workspace"); }
-
 private:
     bool isFiltered(const FilePath &path, QList<IVersionControl *> versionControls) const;
 
@@ -138,8 +136,8 @@ WorkspaceBuildSystem::WorkspaceBuildSystem(BuildConfiguration *bc)
                 m_watcher.get(),
                 &FileSystemWatcher::directoryChanged,
                 this,
-                [this](const QString &path) {
-                    handleDirectoryChanged(FilePath::fromPathPart(path));
+                [this](const FilePath &path) {
+                    handleDirectoryChanged(path);
                 });
 
             addNodes(root.get());
@@ -306,7 +304,7 @@ void WorkspaceBuildSystem::handleDirectoryChanged(const FilePath &directory)
         };
         fn->forEachFileNode(filter);
         fn->forEachFolderNode(filter);
-        for (auto n : toRemove)
+        for (auto n : std::as_const(toRemove))
             fn->replaceSubtree(n, nullptr);
     } else {
         scan(directory);
@@ -355,8 +353,8 @@ bool WorkspaceBuildSystem::isFiltered(const FilePath &path, QList<IVersionContro
 class WorkspaceRunConfiguration : public RunConfiguration
 {
 public:
-    WorkspaceRunConfiguration(Target *target, Id id)
-        : RunConfiguration(target, id)
+    WorkspaceRunConfiguration(BuildConfiguration *bc, Id id)
+        : RunConfiguration(bc, id)
     {
         hint.setText(Tr::tr("Clone the configuration to change it. Or, make the changes in "
                             "the .qtcreator/project.json file."));
@@ -398,14 +396,13 @@ public:
         auto enabledUpdater = [this] { setEnabled(enabled.value()); };
         connect(&enabled, &BaseAspect::changed, this, enabledUpdater);
         connect(this, &AspectContainer::fromMapFinished, this, enabledUpdater);
-        connect(target, &Target::buildSystemUpdated, this, &RunConfiguration::update);
         enabledUpdater();
         enabled.setSettingsKey("Workspace.RunConfiguration.Enabled");
     }
 
-    RunConfiguration *clone(Target *parent) override
+    RunConfiguration *clone(BuildConfiguration *bc) override
     {
-        RunConfiguration *result = RunConfiguration::clone(parent);
+        RunConfiguration *result = RunConfiguration::clone(bc);
         dynamic_cast<WorkspaceRunConfiguration *>(result)->enabled.setValue(true);
         return result;
     }
@@ -602,7 +599,7 @@ public:
 
         setId(WORKSPACE_PROJECT_ID);
         setDisplayName(projectDirectory().fileName());
-        setBuildSystemCreator<WorkspaceBuildSystem>();
+        setBuildSystemCreator<WorkspaceBuildSystem>("Workspace");
 
         connect(this, &Project::projectFileIsDirty, this, &WorkspaceProject::updateBuildConfigurations);
     }

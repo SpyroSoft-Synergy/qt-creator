@@ -14,6 +14,7 @@
 
 #include <coreplugin/coreconstants.h>
 #include <coreplugin/editormanager/editormanager.h>
+#include <coreplugin/generatedfile.h>
 #include <coreplugin/icore.h>
 #include <coreplugin/idocument.h>
 #include <coreplugin/iversioncontrol.h>
@@ -1573,6 +1574,34 @@ bool GitClient::synchronousInit(const FilePath &workingDirectory)
     return false;
 }
 
+bool GitClient::synchronousAddGitignore(const FilePath &workingDirectory)
+{
+    const FilePath gitIgnoreDestination = workingDirectory.pathAppended(".gitignore");
+
+    auto intentToAddGitignore = [this, workingDirectory, gitIgnoreDestination] {
+        return synchronousAdd(workingDirectory, {gitIgnoreDestination.fileName()}, {"--intent-to-add"});
+    };
+
+    if (gitIgnoreDestination.exists())
+        return intentToAddGitignore();
+
+    const FilePath gitIgnoreTemplate =
+        Core::ICore::resourcePath().pathAppended("templates/wizards/projects/git.ignore");
+
+    if (!QTC_GUARD(gitIgnoreTemplate.exists()))
+        return false;
+
+    Core::GeneratedFile gitIgnoreFile(gitIgnoreDestination);
+    gitIgnoreFile.setBinaryContents(gitIgnoreTemplate.fileContents().value());
+    QString errorMessage;
+    if (!gitIgnoreFile.write(&errorMessage)) {
+        VcsOutputWindow::appendError(errorMessage);
+        return false;
+    }
+
+    return intentToAddGitignore();
+}
+
 /* Checkout, supports:
  * git checkout -- <files>
  * git checkout revision -- <files>
@@ -2565,19 +2594,28 @@ void GitClient::handleGitKFailedToStart(const Environment &env,
     tryLaunchingGitK(env, workingDirectory, fileName, nextTrial);
 }
 
-bool GitClient::launchGitGui(const FilePath &workingDirectory) {
-    bool success = true;
+bool GitClient::launchGitGui(const FilePath &workingDirectory)
+{
+    const QString cannotLaunchGitGui = msgCannotLaunch("git gui");
     FilePath gitBinary = vcsBinary(workingDirectory);
     if (gitBinary.isEmpty()) {
-        success = false;
-    } else {
-        success = Process::startDetached({gitBinary, {"gui"}}, workingDirectory);
+        VcsOutputWindow::appendError(cannotLaunchGitGui);
+        return false;
     }
 
-    if (!success)
-        VcsOutputWindow::appendError(msgCannotLaunch("git gui"));
-
-    return success;
+    auto process = new Process(const_cast<GitClient *>(this));
+    process->setWorkingDirectory(workingDirectory);
+    process->setCommand({gitBinary, {"gui"}});
+    connect(process, &Process::done, this, [process, cannotLaunchGitGui] {
+        if (process->result() != ProcessResult::FinishedWithSuccess) {
+            const QString errorMessage = process->readAllStandardError();
+            VcsOutputWindow::appendError(cannotLaunchGitGui);
+            VcsOutputWindow::appendError(errorMessage);
+            process->deleteLater();
+        }
+    });
+    process->start();
+    return true;
 }
 
 FilePath GitClient::gitBinDirectory() const
@@ -3603,6 +3641,9 @@ void GitClient::StashInfo::stashPrompt(const QString &command, const QString &st
     QPushButton *cancelButton = msgBox.addButton(QMessageBox::Cancel);
     cancelButton->setToolTip(Tr::tr("Cancel %1.").arg(command));
 
+    QPushButton *diffButton = msgBox.addButton(Tr::tr("Di&ff && Cancel"), QMessageBox::RejectRole);
+    diffButton->setToolTip(Tr::tr("Show a Diff of the local changes and cancel %1.").arg(command));
+
     msgBox.exec();
 
     if (msgBox.clickedButton() == discardButton) {
@@ -3612,6 +3653,9 @@ void GitClient::StashInfo::stashPrompt(const QString &command, const QString &st
         m_stashResult = NotStashed;
     } else if (msgBox.clickedButton() == cancelButton) {
         m_stashResult = StashCanceled;
+    } else if (msgBox.clickedButton() == diffButton) {
+        m_stashResult = StashCanceled;
+        gitClient().diffUnstagedRepository(m_workingDir);
     } else if (msgBox.clickedButton() == stashButton) {
         const bool result = gitClient().executeSynchronousStash(
                     m_workingDir, creatorStashMessage(command), false, errorMessage);

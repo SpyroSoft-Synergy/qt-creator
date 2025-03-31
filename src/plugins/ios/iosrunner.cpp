@@ -107,7 +107,6 @@ public:
     DeviceCtlRunnerBase(RunControl *runControl);
 
     void start();
-    qint64 processIdentifier() const { return m_processIdentifier; }
 
 protected:
     GroupItem findApp(const QString &bundleIdentifier, Storage<AppInfo> appInfo);
@@ -293,6 +292,7 @@ GroupItem DeviceCtlPollingRunner::launchTask(const QString &bundleIdentifier)
         const Utils::expected_str<qint64> pid = parseLaunchResult(process.rawStdOut());
         if (pid) {
             m_processIdentifier = *pid;
+            runControl()->setAttachPid(ProcessHandle(m_processIdentifier));
             m_pollTimer.start();
             reportStarted();
             return DoneResult::Success;
@@ -486,6 +486,7 @@ GroupItem DeviceCtlRunner::launchTask(const QString &bundleIdentifier)
                 onGroupDone([this, appInfo](DoneWith doneWith) {
                     if (doneWith == DoneWith::Success) {
                         m_processIdentifier = appInfo->processIdentifier;
+                        runControl()->setAttachPid(ProcessHandle(m_processIdentifier));
                         reportStarted();
                     } else {
                         reportFailure(Tr::tr("Failed to retrieve process ID."));
@@ -527,7 +528,6 @@ public:
 
     Port gdbServerPort() const;
     Port qmlServerPort();
-    qint64 pid() const;
     bool isAppRunning() const;
 
 private:
@@ -556,7 +556,6 @@ private:
 
     bool m_cleanExit = false;
     Port m_gdbServerPort;
-    qint64 m_pid = 0;
 };
 
 IosRunner::IosRunner(RunControl *runControl)
@@ -727,7 +726,7 @@ void IosRunner::handleGotInferiorPid(IosToolHandler *handler, const FilePath &bu
         reportFailure(Tr::tr("Could not get inferior PID."));
         return;
     }
-    m_pid = pid;
+    runControl()->setAttachPid(ProcessHandle(pid));
 
     if (qmlDebug() && !qmlServerPort().isValid())
         reportFailure(Tr::tr("Could not get necessary ports for the debugger connection."));
@@ -781,11 +780,6 @@ void IosRunner::handleFinished(IosToolHandler *handler)
     reportStopped();
 }
 
-qint64 IosRunner::pid() const
-{
-    return m_pid;
-}
-
 bool IosRunner::isAppRunning() const
 {
     return m_toolHandler && m_toolHandler->isRunning();
@@ -794,44 +788,6 @@ bool IosRunner::isAppRunning() const
 Port IosRunner::gdbServerPort() const
 {
     return m_gdbServerPort;
-}
-
-//
-// IosQmlProfilerSupport
-//
-
-class IosQmlProfilerSupport : public RunWorker
-{
-
-public:
-    IosQmlProfilerSupport(RunControl *runControl);
-
-private:
-    void start() override;
-    IosRunner *m_runner = nullptr;
-    RunWorker *m_profiler = nullptr;
-};
-
-IosQmlProfilerSupport::IosQmlProfilerSupport(RunControl *runControl)
-    : RunWorker(runControl)
-{
-    setId("IosQmlProfilerSupport");
-
-    m_runner = new IosRunner(runControl);
-    m_runner->setQmlDebugging(QmlProfilerServices);
-    addStartDependency(m_runner);
-
-    m_profiler = runControl->createWorker(ProjectExplorer::Constants::QML_PROFILER_RUNNER);
-    m_profiler->addStartDependency(this);
-}
-
-void IosQmlProfilerSupport::start()
-{
-    const Port qmlPort = Port(runControl()->qmlChannel().port());
-    if (qmlPort.isValid())
-        reportStarted();
-    else
-        reportFailure(Tr::tr("Could not get necessary ports for the profiler connection."));
 }
 
 static expected_str<FilePath> findDeviceSdk(IosDevice::ConstPtr dev)
@@ -869,7 +825,7 @@ IosRunWorkerFactory::IosRunWorkerFactory()
             if (IosDeviceManager::isDeviceCtlOutputSupported())
                 return new DeviceCtlRunner(control);
             // TODO Remove the polling runner when we decide not to support iOS 17+ devices
-            // with Xcode < 15.4 at all
+            // with Xcode < 16 at all
             return new DeviceCtlPollingRunner(control);
         }
         control->setIcon(Icons::RUN_SMALL_TOOLBAR);
@@ -881,8 +837,7 @@ IosRunWorkerFactory::IosRunWorkerFactory()
     addSupportedRunConfig(Constants::IOS_RUNCONFIG_ID);
 }
 
-static void startDebugger(RunControl *runControl, DebuggerRunTool *debugger,
-                          IosRunner *iosRunner, DeviceCtlRunner *deviceCtlRunner)
+static void startDebugger(RunControl *runControl, DebuggerRunTool *debugger, IosRunner *iosRunner)
 {
     DebuggerRunParameters &rp = debugger->runParameters();
     const IosDeviceTypeAspect::Data *data = runControl->aspectData<IosDeviceTypeAspect>();
@@ -909,7 +864,6 @@ static void startDebugger(RunControl *runControl, DebuggerRunTool *debugger,
             debugger->appendMessage(msgOnlyCppDebuggingSupported(),
                                     OutputFormat::LogMessageFormat, true);
         }
-        rp.setAttachPid(deviceCtlRunner->processIdentifier());
         rp.setInferiorExecutable(data->localExecutable);
         return;
     }
@@ -921,7 +875,6 @@ static void startDebugger(RunControl *runControl, DebuggerRunTool *debugger,
 
     const Port gdbServerPort = iosRunner->gdbServerPort();
     const Port qmlServerPort = iosRunner->qmlServerPort();
-    rp.setAttachPid(iosRunner->pid());
 
     const bool cppDebug = rp.isCppDebugging();
     const bool qmlDebug = rp.isQmlDebugging();
@@ -1009,11 +962,9 @@ static RunWorker *createWorker(RunControl *runControl)
         rp.setLldbPlatform("ios-simulator");
     }
 
-    QObject::connect(runner, &RunWorker::started, debugger,
-                     [runControl, debugger, iosRunner, deviceCtlRunner] {
-                         startDebugger(runControl, debugger, iosRunner, deviceCtlRunner);
-                     });
-
+    QObject::connect(runner, &RunWorker::started, debugger, [runControl, debugger, iosRunner] {
+        startDebugger(runControl, debugger, iosRunner);
+    });
     return debugger;
 }
 
@@ -1026,7 +977,14 @@ IosDebugWorkerFactory::IosDebugWorkerFactory()
 
 IosQmlProfilerWorkerFactory::IosQmlProfilerWorkerFactory()
 {
-    setProduct<IosQmlProfilerSupport>();
+    setProducer([](RunControl *runControl) {
+        auto runner = new IosRunner(runControl);
+        runner->setQmlDebugging(QmlProfilerServices);
+
+        auto profiler = runControl->createWorker(ProjectExplorer::Constants::QML_PROFILER_RUNNER);
+        profiler->addStartDependency(runner);
+        return profiler;
+    });
     addSupportedRunMode(ProjectExplorer::Constants::QML_PROFILER_RUN_MODE);
     addSupportedRunConfig(Constants::IOS_RUNCONFIG_ID);
 }

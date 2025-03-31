@@ -154,7 +154,7 @@ QString BlameMark::toolTipText(const CommitInfo &info) const
                          .arg(colors.hash, info.hash,
                               colors.author, info.author, info.authorMail,
                               colors.date, info.authorDate.toString("yyyy-MM-dd hh:mm:ss"),
-                              colors.subject, info.subject);
+                              colors.subject, info.subject.toHtmlEscaped());
 
     QString result = actions + header;
 
@@ -308,15 +308,13 @@ void InstantBlame::setup()
 static CommitInfo parseBlameOutput(const QStringList &blame, const Utils::FilePath &filePath,
                                    int line, const Git::Internal::Author &author)
 {
-    static const QString uncommittedHash(40, '0');
-
     CommitInfo result;
     if (blame.size() <= 12)
         return result;
 
     const QStringList firstLineParts = blame.at(0).split(" ");
     result.hash = firstLineParts.first();
-    result.modified = result.hash == uncommittedHash;
+    result.modified = !gitClient().isValidRevision(result.hash);
     if (result.modified) {
         result.author = Tr::tr("Not Committed Yet");
         result.subject = Tr::tr("Modified line in %1").arg(filePath.fileName());

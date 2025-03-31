@@ -24,12 +24,11 @@ public:
         setProducer([](RunControl *runControl) {
             auto worker = new ProcessRunner(runControl);
             worker->setId("QnxQmlProfilerSupport");
-            worker->appendMessage(Tr::tr("Preparing remote side..."), LogMessageFormat);
+            runControl->postMessage(Tr::tr("Preparing remote side..."), LogMessageFormat);
 
             runControl->requestQmlChannel();
 
-            auto slog2InfoRunner = new RecipeRunner(runControl);
-            slog2InfoRunner->setRecipe(slog2InfoRecipe(runControl));
+            auto slog2InfoRunner = new RecipeRunner(runControl, slog2InfoRecipe(runControl));
             worker->addStartDependency(slog2InfoRunner);
 
             auto profiler = runControl->createWorker(ProjectExplorer::Constants::QML_PROFILER_RUNNER);
