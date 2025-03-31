@@ -41,11 +41,15 @@ ExtensionManagerSettings::ExtensionManagerSettings()
         useExternalRepo.setToolTip(Tr::tr("SSL support is not available."));
     }
 
-    externalRepoUrl.setSettingsKey("ExternalRepoUrl");
-    externalRepoUrl.setDefaultValue("https://qc-extensions.qt.io");
-    externalRepoUrl.setDisplayStyle(Utils::StringAspect::LineEditDisplay);
-    externalRepoUrl.setLabelText(Tr::tr("Server URL:"));
+    repositoryUrls.setSettingsKey("RepositoryUrls");
+    repositoryUrls.setLabelText(Tr::tr("Repository Urls:"));
+    repositoryUrls.setToolTip(
+        Tr::tr("Repositories to query for Extensions. You can specify local paths or "
+               "http(s) urls that should be merged with the main repository."));
+    repositoryUrls.setDefaultValue(
+        {"https://github.com/qt-creator/extension-registry/archive/refs/heads/main.tar.gz"});
 
+    // clang-format off
     setLayouter([this] {
         using namespace Layouting;
         using namespace Core;
@@ -63,7 +67,7 @@ ExtensionManagerSettings::ExtensionManagerSettings()
                 title(Tr::tr("Use External Repository")),
                 groupChecker(useExternalRepo.groupChecker()),
                 Form {
-                    externalRepoUrl
+                    repositoryUrls, br,
                 },
             },
             Row {
@@ -82,6 +86,7 @@ ExtensionManagerSettings::ExtensionManagerSettings()
             spacing(Utils::StyleHelper::SpacingTokens::ExVPaddingGapXl),
         };
     });
+    // clang-format on
 
     readSettings();
 }

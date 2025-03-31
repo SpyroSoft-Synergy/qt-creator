@@ -1102,7 +1102,7 @@ void PluginManagerPrivate::deleteAll()
 void PluginManagerPrivate::checkForDuplicatePlugins()
 {
     QHash<QString, PluginSpec *> seen;
-    for (PluginSpec *spec : pluginSpecs) {
+    for (PluginSpec *spec : std::as_const(pluginSpecs)) {
         if (PluginSpec *other = seen.value(spec->id())) {
             // Plugin with same name already there. We do not know, which version is the right one,
             // keep it simple and fail both (if enabled).
@@ -1207,7 +1207,9 @@ static QStringList matchingTestFunctions(const QStringList &testFunctions,
 static QObject *objectWithClassName(const QObjectList &objects, const QString &className)
 {
     return Utils::findOr(objects, nullptr, [className] (QObject *object) -> bool {
-        QString candidate = QString::fromUtf8(object->metaObject()->className());
+        QString candidate = object->objectName();
+        if (candidate.isEmpty())
+            candidate = QString::fromUtf8(object->metaObject()->className());
         const int colonIndex = candidate.lastIndexOf(QLatin1Char(':'));
         if (colonIndex != -1 && colonIndex < candidate.size() - 1)
             candidate = candidate.mid(colonIndex + 1);
@@ -1711,6 +1713,22 @@ PluginSpec *PluginManager::specForPlugin(IPlugin *plugin)
     return findOrDefault(d->pluginSpecs, equal(&PluginSpec::plugin, plugin));
 }
 
+PluginSpec *PluginManager::specById(const QString &id)
+{
+    return d->pluginById(id);
+}
+
+bool PluginManager::specExists(const QString &id)
+{
+    return Utils::anyOf(d->pluginSpecs, Utils::equal(&PluginSpec::id, id));
+}
+
+bool PluginManager::specExistsAndIsEnabled(const QString &id)
+{
+    PluginSpec *spec = d->pluginById(id);
+    return spec && spec->isEffectivelyEnabled();
+}
+
 static QString pluginListString(const QSet<PluginSpec *> &plugins)
 {
     QStringList names = Utils::transform<QList>(plugins, &PluginSpec::name);
@@ -1955,8 +1973,7 @@ static const char PLUGINS_TO_REMOVE_KEY[] = "PluginsToRemove";
 
 Result PluginManagerPrivate::removePluginOnRestart(const QString &pluginId)
 {
-    const PluginSpec *pluginSpec
-        = findOrDefault(pluginSpecs, Utils::equal(&PluginSpec::id, pluginId));
+    const PluginSpec *pluginSpec = pluginById(pluginId);
 
     if (!pluginSpec)
         return Result::Error(Tr::tr("Plugin not found."));
@@ -2031,7 +2048,7 @@ void PluginManagerPrivate::installPluginsAfterRestart()
     QList<QPair<FilePath, FilePath>> installList = readPluginInstallList(settings);
     const Utils::FilePaths pluginPaths = PluginManager::pluginPaths();
 
-    for (const auto &[src, dest] : installList) {
+    for (const auto &[src, dest] : std::as_const(installList)) {
         if (!src.exists()) {
             qCWarning(pluginLog()) << "Cannot install source " << src << ", it does not exist";
             continue;
@@ -2151,7 +2168,7 @@ PluginSpec *PluginManagerPrivate::pluginById(const QString &id_in) const
     QString id = id_in;
     // Plugin ids are always lower case. So the id argument should be too.
     QTC_ASSERT(id.isLower(), id = id.toLower());
-    return Utils::findOrDefault(pluginSpecs, [id](PluginSpec *spec) { return spec->id() == id; });
+    return Utils::findOrDefault(pluginSpecs, Utils::equal(&PluginSpec::id, id));
 }
 
 void PluginManagerPrivate::increaseProfilingVerbosity()

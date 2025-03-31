@@ -33,6 +33,7 @@
 #include <debugger/debuggericons.h>
 #include <debugger/debuggermainwindow.h>
 
+#include <projectexplorer/buildconfiguration.h>
 #include <projectexplorer/devicesupport/devicekitaspects.h>
 #include <projectexplorer/devicesupport/idevice.h>
 #include <projectexplorer/environmentaspect.h>
@@ -40,6 +41,7 @@
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/projectmanager.h>
+#include <projectexplorer/runcontrol.h>
 #include <projectexplorer/target.h>
 
 #include <qtsupport/qtkitaspect.h>
@@ -365,7 +367,7 @@ void QmlProfilerTool::finalizeRunControl(RunControl *runControl)
 
     updateRunActions();
 
-    d->m_profilerModelManager->populateFileFinder(runControl->target());
+    d->m_profilerModelManager->populateFileFinder(runControl->buildConfiguration());
     d->m_profilerState->setCurrentState(QmlProfilerStateManager::AppRunning);
 }
 
@@ -511,7 +513,7 @@ bool QmlProfilerTool::prepareTool()
     return true;
 }
 
-ProjectExplorer::RunControl *QmlProfilerTool::attachToWaitingApplication()
+RunControl *QmlProfilerTool::attachToWaitingApplication()
 {
     if (!prepareTool())
         return nullptr;
@@ -556,9 +558,10 @@ ProjectExplorer::RunControl *QmlProfilerTool::attachToWaitingApplication()
 
     auto runControl = new RunControl(ProjectExplorer::Constants::QML_PROFILER_RUN_MODE);
     runControl->copyDataFromRunConfiguration(activeRunConfigForActiveProject());
+    runControl->setQmlChannel(serverUrl);
     // The object as such is needed, the RunWorker becomes part of the RunControl at construction time,
     // similar to how QObject children are owned by their parents
-    [[maybe_unused]] auto profiler = new QmlProfilerRunner(runControl);
+    [[maybe_unused]] auto profiler = new RecipeRunner(runControl, qmlProfilerRecipe(runControl));
 
     connect(d->m_profilerConnections, &QmlProfilerClientManager::connectionClosed,
             runControl, &RunControl::initiateStop);

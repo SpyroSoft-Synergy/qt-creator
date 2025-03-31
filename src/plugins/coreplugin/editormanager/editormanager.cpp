@@ -1906,7 +1906,7 @@ void EditorManagerPrivate::addEditorArea(EditorArea *area)
             // In case the hidden editor area has the current view, look for a view
             // that is not hidden, iterating through the history of current views.
             // This could be the first==current view (which results in a no-op).
-            for (const QPointer<EditorView> &view : d->m_currentView) {
+            for (const QPointer<EditorView> &view : std::as_const(d->m_currentView)) {
                 if (isReallyVisibile(view)) {
                     setCurrentView(view);
                     return;
@@ -3603,7 +3603,7 @@ QByteArray EditorManager::saveState()
     stream << QByteArray("EditorManagerV5");
 
     // TODO: In case of split views it's not possible to restore these for all correctly with this
-    QList<IDocument *> documents = DocumentModel::openedDocuments();
+    const QList<IDocument *> documents = DocumentModel::openedDocuments();
     for (IDocument *document : documents) {
         if (!document->filePath().isEmpty() && !document->isTemporary()) {
             IEditor *editor = DocumentModel::editorsForDocument(document).constFirst();

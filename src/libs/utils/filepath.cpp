@@ -10,6 +10,7 @@
 #include "fileutils.h"
 #include "hostosinfo.h"
 #include "qtcassert.h"
+#include "stringtable.h"
 #include "utilstr.h"
 
 #include <QByteArray>
@@ -354,6 +355,16 @@ Utils::expected_str<std::unique_ptr<FilePathWatcher>> FilePath::watch() const
 void FilePath::openTerminal(const Environment &env) const
 {
     deviceFileHooks().openTerminal(*this, env);
+}
+
+/*!
+    Returns a copy with interned data.
+*/
+FilePath FilePath::intern() const
+{
+    FilePath result = *this;
+    result.m_data = StringTable::insert(m_data);
+    return result;
 }
 
 /*!
@@ -1626,47 +1637,7 @@ FilePath FilePath::relativeChildPath(const FilePath &parent) const
     return res;
 }
 
-/*!
-    Returns the relative path of FilePath from a given \a anchor.
-    Both, FilePath and anchor may be files or directories.
-    Example usage:
-
-    \code
-        FilePath filePath("/foo/b/ar/file.txt");
-        FilePath relativePath = filePath.relativePathFrom("/foo/c");
-        qDebug() << relativePath
-    \endcode
-
-    The debug output will be "../b/ar/file.txt".
-*/
-
-FilePath FilePath::relativePathFromDir(const FilePath &anchor) const
-{
-    QTC_ASSERT(isSameDevice(anchor), return *this);
-
-    FilePath absPath = absoluteFilePath();
-    const FilePath absoluteAnchorPath = anchor.absoluteFilePath();
-
-    QString relativeFilePath = calcRelativePath(absPath.pathView(), absoluteAnchorPath.pathView());
-
-    return FilePath::fromString(relativeFilePath);
-}
-
-/*!
-    Returns the relative path of \a absolutePath to given \a absoluteAnchorPath.
-    Both paths must be an absolute path to a directory.
-
-    Example usage:
-
-    \code
-        qDebug() << FilePath::calcRelativePath("/foo/b/ar", "/foo/c");
-    \endcode
-
-    The debug output will be "../b/ar".
-
-    \see FilePath::isRelativePath(), FilePath::relativePathFrom(), FilePath::relativeChildPath()
-*/
-QString FilePath::calcRelativePath(QStringView absolutePath, QStringView absoluteAnchorPath)
+static QString calcRelativePath(QStringView absolutePath, QStringView absoluteAnchorPath)
 {
     if (absolutePath.isEmpty() || absoluteAnchorPath.isEmpty())
         return QString();
@@ -1701,6 +1672,32 @@ QString FilePath::calcRelativePath(QStringView absolutePath, QStringView absolut
     if (relativePath.isEmpty())
         return QString(".");
     return relativePath;
+}
+
+/*!
+    Returns the relative path of FilePath from a given directory \a anchor.
+    FilePath and anchor may be files or directories.
+    Example usage:
+
+    \code
+        FilePath filePath("/foo/b/ar/file.txt");
+        FilePath relativePath = filePath.relativePathFrom("/foo/c");
+        qDebug() << relativePath
+    \endcode
+
+    The debug output will be "../b/ar/file.txt".
+*/
+
+FilePath FilePath::relativePathFromDir(const FilePath &anchor) const
+{
+    QTC_ASSERT(isSameDevice(anchor), return *this);
+
+    const FilePath absPath = absoluteFilePath();
+    const FilePath absoluteAnchorPath = anchor.absoluteFilePath();
+
+    QString relativeFilePath = calcRelativePath(absPath.pathView(), absoluteAnchorPath.pathView());
+
+    return FilePath::fromString(relativeFilePath);
 }
 
 /*!

@@ -49,6 +49,7 @@
 
 using namespace ProjectExplorer;
 using namespace Utils;
+using namespace ExtensionSystem;
 
 namespace QmlProjectManager {
 
@@ -56,25 +57,20 @@ namespace {
 Q_LOGGING_CATEGORY(infoLogger, "QmlProjectManager.QmlBuildSystem", QtInfoMsg)
 }
 
-ExtensionSystem::IPlugin *findMcuSupportPlugin()
+IPlugin *findMcuSupportPlugin()
 {
-    const ExtensionSystem::PluginSpec *pluginSpec = Utils::findOrDefault(
-        ExtensionSystem::PluginManager::plugins(),
-        Utils::equal(&ExtensionSystem::PluginSpec::id, QString("mcusupport")));
-
-    if (pluginSpec)
-        return pluginSpec->plugin();
-    return nullptr;
+    const PluginSpec *pluginSpec = PluginManager::specById(QString("mcusupport"));
+    return pluginSpec ? pluginSpec->plugin() : nullptr;
 }
 
-void updateMcuBuildStep(Target *target, bool mcuEnabled)
+void updateMcuBuildStep(BuildConfiguration *bc, bool mcuEnabled)
 {
     if (auto plugin = findMcuSupportPlugin()) {
         QMetaObject::invokeMethod(
             plugin,
             "updateDeployStep",
             Qt::DirectConnection,
-            Q_ARG(ProjectExplorer::Target*, target),
+            Q_ARG(ProjectExplorer::BuildConfiguration *, bc),
             Q_ARG(bool, mcuEnabled));
     } else if (mcuEnabled) {
         qWarning() << "Failed to find McuSupport plugin but qtForMCUs is enabled in the project";
@@ -91,16 +87,16 @@ QmlBuildSystem::QmlBuildSystem(BuildConfiguration *bc)
     updateDeploymentData();
 //    registerMenuButtons(); //is wip
 
-    connect(project(), &Project::activeTargetChanged, this, [this](Target *target) {
+    connect(project(), &Project::activeBuildConfigurationChanged, this, [this](BuildConfiguration *bc) {
         refresh(RefreshOptions::NoFileRefresh);
         m_fileGen->updateProject(qmlProject());
-        updateMcuBuildStep(target, qtForMCUs());
+        updateMcuBuildStep(bc, qtForMCUs());
     });
     connect(project(), &Project::projectFileIsDirty, this, [this] {
         refresh(RefreshOptions::Project);
         m_fileGen->updateProject(qmlProject());
         m_fileGen->updateMenuAction();
-        updateMcuBuildStep(project()->activeTarget(), qtForMCUs());
+        updateMcuBuildStep(project()->activeBuildConfiguration(), qtForMCUs());
     });
 
     // FIXME: Check. Probably bogus after the BuildSystem move.
@@ -246,12 +242,12 @@ void QmlBuildSystem::initMcuProjectItems()
         connect(qmlProjectItem.data(), &QmlProjectItem::filesChanged, this, &QmlBuildSystem::refreshFiles);
         m_fileGen->updateProjectItem(m_projectItem.data(), false);
 
-        m_mcuProjectFilesWatcher.addFile(mcuProjectFile, Utils::FileSystemWatcher::WatchModifiedDate);
+        m_mcuProjectFilesWatcher.addFile(mcuProjectFilePath, FileSystemWatcher::WatchModifiedDate);
 
         connect(&m_mcuProjectFilesWatcher,
                 &Utils::FileSystemWatcher::fileChanged,
                 this,
-                [this](const QString &file) {
+                [this](const FilePath &file) {
                     Q_UNUSED(file)
                     initMcuProjectItems();
                     refresh(RefreshOptions::Files);
@@ -292,7 +288,7 @@ void QmlBuildSystem::generateProjectTree()
         newRoot->addNestedNode(std::make_unique<FileNode>(file, fileType));
     }
 
-    for (const auto &mcuProjectItem : m_mcuProjectItems) {
+    for (const auto &mcuProjectItem : std::as_const(m_mcuProjectItems)) {
         for (const auto &file : mcuProjectItem->files()) {
             // newRoot->addNestedNode(std::make_unique<FileNode>(file, FileType::Project));
             const FileType fileType = (file == projectFilePath())

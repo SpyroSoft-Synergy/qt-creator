@@ -821,7 +821,7 @@ void PythonSettings::setInterpreter(const QList<Interpreter> &interpreters, cons
         if (!Utils::eraseOne(toRemove, Utils::equal(&Interpreter::id, interpreter.id)))
             addKitsForInterpreter(interpreter, false);
     }
-    for (const Interpreter &interpreter : toRemove)
+    for (const Interpreter &interpreter : std::as_const(toRemove))
         removeKitsForInterpreter(interpreter);
     settingsInstance->m_interpreters = interpreters;
     settingsInstance->m_defaultInterpreterId = defaultId;
@@ -858,8 +858,9 @@ QString PythonSettings::pylsConfiguration()
 
 static void cacheVenvAndPipUsability(const Interpreter &interpreter)
 {
-    Utils::asyncRun(&venvIsUsable, interpreter.command);
-    Utils::asyncRun(&pipIsUsable, interpreter.command);
+    static QPointer<QThreadPool> pool(new QThreadPool(PythonSettings::instance()));
+    Utils::asyncRun(pool.get(), &venvIsUsable, interpreter.command);
+    Utils::asyncRun(pool.get(), &pipIsUsable, interpreter.command);
 }
 
 void PythonSettings::addInterpreter(const Interpreter &interpreter, bool isDefault)
@@ -1071,7 +1072,7 @@ void PythonSettings::writeToSettings(QtcSettings *settings)
 {
     settings->beginGroup(settingsGroupKey);
     QVariantList interpretersVar;
-    for (const Interpreter &interpreter : m_interpreters) {
+    for (const Interpreter &interpreter : std::as_const(m_interpreters)) {
         QVariantList interpreterVar{interpreter.id,
                                     interpreter.name,
                                     interpreter.command.toSettings()};
@@ -1140,7 +1141,7 @@ void PythonSettings::fixupPythonKits()
                 Qt::UniqueConnection);
         return;
     }
-    for (const Interpreter &interpreter : m_interpreters) {
+    for (const Interpreter &interpreter : std::as_const(m_interpreters)) {
         if (auto k = KitManager::kit(Id::fromString(interpreter.id)))
             setRelevantAspectsToKit(k);
     }

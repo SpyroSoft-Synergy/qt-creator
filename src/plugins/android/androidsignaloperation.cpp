@@ -18,12 +18,12 @@ AndroidSignalOperation::AndroidSignalOperation() = default;
 void AndroidSignalOperation::signalOperationViaADB(qint64 pid, int signal)
 {
     struct InternalStorage {
-        FilePath adbPath;
+        FilePath adbPath = AndroidConfig::adbToolPath();
         QString runAs = {};
         Result result = Result::Ok;
     };
 
-    const Storage<InternalStorage> storage({AndroidConfig::adbToolPath()});
+    const Storage<InternalStorage> storage;
 
     const auto onCatSetup = [storage, pid](Process &process) {
         process.setCommand({storage->adbPath, {"shell", "cat", QString("/proc/%1/cmdline").arg(pid)}});
@@ -62,6 +62,7 @@ void AndroidSignalOperation::signalOperationViaADB(qint64 pid, int signal)
     const auto onDone = [this, storage] { emit finished(storage->result); };
 
     const Group recipe {
+        storage,
         ProcessTask(onCatSetup, onCatDone).withTimeout(5s),
         ProcessTask(onKillSetup, onKillDone).withTimeout(5s),
         onGroupDone(onDone)

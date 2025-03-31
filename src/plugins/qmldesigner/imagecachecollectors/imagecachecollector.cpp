@@ -151,11 +151,15 @@ bool ImageCacheCollector::runProcess(const QStringList &arguments) const
         return false;
 
     auto [workingDirectoryPath, puppetPath] = QmlDesigner::QmlPuppetPaths::qmlPuppetPaths(
-        target(), m_externalDependencies.designerSettings());
+        target()->kit(), m_externalDependencies.designerSettings());
     if (puppetPath.isEmpty())
         return false;
 
     QProcessUniquePointer puppetProcess{new QProcess};
+
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.remove("QSG_RHI_BACKEND");
+    puppetProcess->setProcessEnvironment(env);
 
     QObject::connect(QCoreApplication::instance(),
                      &QCoreApplication::aboutToQuit,

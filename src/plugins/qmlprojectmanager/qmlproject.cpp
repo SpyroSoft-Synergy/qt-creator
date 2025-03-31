@@ -46,7 +46,7 @@ QmlProject::QmlProject(const Utils::FilePath &fileName)
 
     setSupportsBuilding(false);
     setIsEditModePreferred(!Core::ICore::isQtDesignStudio());
-    setBuildSystemCreator<QmlBuildSystem>();
+    setBuildSystemCreator<QmlBuildSystem>("qml");
 
     if (Core::ICore::isQtDesignStudio()) {
         if (allowOnlySingleProject() && !fileName.endsWith(Constants::fakeProjectName)) {
@@ -66,12 +66,12 @@ QmlProject::QmlProject(const Utils::FilePath &fileName)
     connect(this, &QmlProject::anyParsingFinished, this, &QmlProject::parsingFinished);
 }
 
-void QmlProject::parsingFinished(const Target *target, bool success)
+void QmlProject::parsingFinished(bool success)
 {
     // trigger only once
     disconnect(this, &QmlProject::anyParsingFinished, this, &QmlProject::parsingFinished);
 
-    if (!target || !success || !activeBuildSystem())
+    if (!success || !activeBuildSystem())
         return;
 
     const auto qmlBuildSystem = qobject_cast<QmlProjectManager::QmlBuildSystem *>(

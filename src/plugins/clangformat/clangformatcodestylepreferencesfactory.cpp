@@ -198,16 +198,17 @@ ClangFormatCodeStyleEditorWidget::ClangFormatCodeStyleEditorWidget(
         m_legacyIndenterSettings = new CppEditor::CppCodeStylePreferencesWidget{this};
         m_legacyIndenterSettings->layout()->setContentsMargins(0, 0, 0, 0);
         m_legacyIndenterSettings->setCodeStyle(cppPreferences);
+        layout->addWidget(m_legacyIndenterSettings);
     }
 
-    layout->addWidget(m_legacyIndenterSettings);
     layout->addWidget(m_clangFormatSettings);
 }
 
 void ClangFormatCodeStyleEditorWidget::onModeChanged(ClangFormatSettings::Mode newMode)
 {
     const bool isLegacyIndenterMode = newMode == ClangFormatSettings::Mode::Disable;
-    m_legacyIndenterSettings->setVisible(isLegacyIndenterMode);
+    if (m_legacyIndenterSettings)
+        m_legacyIndenterSettings->setVisible(isLegacyIndenterMode);
     m_clangFormatSettings->setVisible(!isLegacyIndenterMode);
 }
 
@@ -218,13 +219,15 @@ void ClangFormatCodeStyleEditorWidget::onUseCustomSettingsChanged(bool doUse)
 
 void ClangFormatCodeStyleEditorWidget::apply()
 {
-    m_legacyIndenterSettings->apply();
+    if (m_legacyIndenterSettings)
+        m_legacyIndenterSettings->apply();
     m_clangFormatSettings->apply();
 }
 
 void ClangFormatCodeStyleEditorWidget::finish()
 {
-    m_legacyIndenterSettings->apply();
+    if (m_legacyIndenterSettings)
+        m_legacyIndenterSettings->apply();
     m_clangFormatSettings->apply();
 }
 
@@ -254,33 +257,24 @@ void ClangFormatCodeStyleEditor::init(
     const ClangFormatSettings::Mode currentMode = m_globalSettings->mode();
 
     auto selector = static_cast<ClangFormatSelectorWidget *>(m_selector);
-    connect(
-        m_globalSettings,
-        &ClangFormatGlobalConfigWidget::modeChanged,
-        selector,
-        &ClangFormatSelectorWidget::onModeChanged);
-    selector->onModeChanged(currentMode);
+    if (selector) {
+        connect(m_globalSettings, &ClangFormatGlobalConfigWidget::modeChanged,
+                selector, &ClangFormatSelectorWidget::onModeChanged);
+        selector->onModeChanged(currentMode);
+        connect(m_globalSettings, &ClangFormatGlobalConfigWidget::useCustomSettingsChanged,
+            selector, &ClangFormatSelectorWidget::onUseCustomSettingsChanged);
+        selector->onUseCustomSettingsChanged(m_globalSettings->useCustomSettings());
+    }
 
     auto editorWidget = static_cast<ClangFormatCodeStyleEditorWidget *>(m_editor);
-    connect(
-        m_globalSettings,
-        &ClangFormatGlobalConfigWidget::modeChanged,
-        editorWidget,
-        &ClangFormatCodeStyleEditorWidget::onModeChanged);
-    editorWidget->onModeChanged(currentMode);
-
-    connect(
-        m_globalSettings,
-        &ClangFormatGlobalConfigWidget::useCustomSettingsChanged,
-        editorWidget,
-        &ClangFormatCodeStyleEditorWidget::onUseCustomSettingsChanged);
-    editorWidget->onUseCustomSettingsChanged(m_globalSettings->useCustomSettings());
-    connect(
-        m_globalSettings,
-        &ClangFormatGlobalConfigWidget::useCustomSettingsChanged,
-        selector,
-        &ClangFormatSelectorWidget::onUseCustomSettingsChanged);
-    selector->onUseCustomSettingsChanged(m_globalSettings->useCustomSettings());
+    if (editorWidget) {
+        connect(m_globalSettings, &ClangFormatGlobalConfigWidget::modeChanged,
+                editorWidget, &ClangFormatCodeStyleEditorWidget::onModeChanged);
+        editorWidget->onModeChanged(currentMode);
+        connect(m_globalSettings, &ClangFormatGlobalConfigWidget::useCustomSettingsChanged,
+                editorWidget, &ClangFormatCodeStyleEditorWidget::onUseCustomSettingsChanged);
+        editorWidget->onUseCustomSettingsChanged(m_globalSettings->useCustomSettings());
+    }
 }
 
 void ClangFormatCodeStyleEditor::apply()

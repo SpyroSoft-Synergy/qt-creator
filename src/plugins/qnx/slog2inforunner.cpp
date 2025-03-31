@@ -43,7 +43,7 @@ Group slog2InfoRecipe(RunControl *runControl)
     // We need to limit length of ApplicationId to 63 otherwise it would not match one in slog2info.
     applicationId.truncate(63);
 
-    const Storage<SlogData> storage({runControl, applicationId});
+    const Storage<SlogData> storage(SlogData{runControl, applicationId});
 
     const auto onTestSetup = [runControl](Process &process) {
         process.setCommand(CommandLine{runControl->device()->filePath("slog2info")});
@@ -84,13 +84,14 @@ Group slog2InfoRecipe(RunControl *runControl)
             storage->processRemainingLogData();
     };
 
-    return {
+    return Group {
         storage,
+        onGroupSetup([] { emit runStorage()->started(); }),
         ProcessTask(onTestSetup, onTestDone, CallDoneIf::Error),
         ProcessTask(onLaunchTimeSetup, onLaunchTimeDone, CallDoneIf::Success),
         ProcessTask(onLogSetup, onLogError, CallDoneIf::Error),
         onGroupDone(onCanceled, CallDoneIf::Error)
-    };
+    }.withCancel(canceler());
 }
 
 void SlogData::processRemainingLogData()

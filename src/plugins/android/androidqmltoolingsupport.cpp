@@ -19,11 +19,11 @@ public:
     AndroidQmlToolingSupportFactory()
     {
         setProducer([](RunControl *runControl) {
-            auto worker = new AndroidRunner(runControl);
+            auto androidRunner = new RecipeRunner(runControl, androidRecipe(runControl));
 
             auto extraWorker = runControl->createWorker(runnerIdForRunMode(runControl->runMode()));
-            extraWorker->addStartDependency(worker);
-            return worker;
+            extraWorker->addStartDependency(androidRunner);
+            return androidRunner;
         });
         addSupportedRunMode(ProjectExplorer::Constants::QML_PROFILER_RUN_MODE);
         addSupportedRunConfig(Constants::ANDROID_RUNCONFIG_ID);

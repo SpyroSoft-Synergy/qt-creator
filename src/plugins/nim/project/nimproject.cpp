@@ -49,7 +49,7 @@ NimProjectScanner::NimProjectScanner(Project *project)
         // Sync watched dirs
         const QSet<FilePath> fsDirs = Utils::transform<QSet>(nodes,
                                                              [](const std::unique_ptr<FileNode> &fn) { return fn->directory(); });
-        const QSet<FilePath> projectDirs = Utils::toSet(m_directoryWatcher.directoryPaths());
+        const QSet<FilePath> projectDirs = Utils::toSet(m_directoryWatcher.directories());
         m_directoryWatcher.addDirectories(Utils::toList(fsDirs - projectDirs), FileSystemWatcher::WatchAllChanges);
         m_directoryWatcher.removeDirectories(Utils::toList(projectDirs - fsDirs));
 
@@ -159,8 +159,6 @@ public:
         Node *,
         const Utils::FilePairs &filesToRename,
         Utils::FilePaths *notRenamed) final;
-    QString name() const final { return QLatin1String("nim"); }
-
     void triggerParsing() final;
 
 protected:
@@ -354,7 +352,7 @@ NimProject::NimProject(const FilePath &filePath) : Project(Constants::C_NIM_MIME
     setDisplayName(filePath.completeBaseName());
     // ensure debugging is enabled (Nim plugin translates nim code to C code)
     setProjectLanguages(Core::Context(ProjectExplorer::Constants::CXX_LANGUAGE_ID));
-    setBuildSystemCreator<NimBuildSystem>();
+    setBuildSystemCreator<NimBuildSystem>("nim");
 }
 
 void NimProject::toMap(Store &map) const

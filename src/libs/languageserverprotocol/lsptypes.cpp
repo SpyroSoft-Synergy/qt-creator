@@ -145,6 +145,7 @@ static QHash<Utils::MimeType, QString> mimeTypeLanguageIdMap()
         {"application/xml", "xml"},
         {"application/xslt+xml", "xsl"},
         {"application/x-yaml", "yaml"},
+        {"text/x-swift", "swift"},
     };
     for (const QPair<QString, QString> &languageIdForMimeTypeName : languageIdsForMimeTypeNames) {
         const Utils::MimeType &mimeType = Utils::mimeTypeForName(languageIdForMimeTypeName.first);
@@ -323,7 +324,7 @@ QTextCursor Range::toSelection(QTextDocument *doc) const
     return cursor;
 }
 
-QString expressionForGlob(QString globPattern)
+static QString expressionForGlob(QString globPattern)
 {
     const QString anySubDir("qtc_anysubdir_id");
     globPattern.replace("**/", anySubDir);
@@ -342,7 +343,7 @@ bool DocumentFilter::applies(const Utils::FilePath &fileName, const Utils::MimeT
         if (fileName.caseSensitivity() == Qt::CaseInsensitive)
             option = QRegularExpression::CaseInsensitiveOption;
         const QRegularExpression regexp(expressionForGlob(*_pattern), option);
-        if (regexp.isValid() && regexp.match(fileName.toUrlishString()).hasMatch())
+        if (regexp.isValid() && regexp.match(fileName.path()).hasMatch())
             return true;
     }
     if (std::optional<QString> _lang = language()) {
@@ -351,7 +352,7 @@ bool DocumentFilter::applies(const Utils::FilePath &fileName, const Utils::MimeT
         };
         if (mimeType.isValid() && match(mimeType))
             return true;
-        return Utils::anyOf(Utils::mimeTypesForFileName(fileName.toUrlishString()), match);
+        return Utils::anyOf(Utils::mimeTypesForFileName(fileName.toFSPathString()), match);
     }
     // return false when any of the filter didn't match but return true when no filter was defined
     return !contains(schemeKey) && !contains(languageKey) && !contains(patternKey);

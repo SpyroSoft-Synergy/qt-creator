@@ -113,12 +113,7 @@ public:
             }
             return true;
         }
-
-        const auto sourceAndCommand = Unarchiver::sourceAndCommand(path);
-        if (!sourceAndCommand)
-            m_info->setText(sourceAndCommand.error());
-
-        return bool(sourceAndCommand);
+        return true;
     }
 
     InfoLabel *m_info = nullptr;
@@ -129,10 +124,7 @@ using CheckResult = expected_str<PluginSpec *>;
 
 static Result checkPlugin(PluginSpec *spec, bool update)
 {
-    const bool pluginAlreadyExists
-        = Utils::anyOf(PluginManager::plugins(), [spec](PluginSpec *other) {
-              return other->id() == spec->id();
-          });
+    const bool pluginAlreadyExists = PluginManager::specExists(spec->id());
 
     if (!update && pluginAlreadyExists) {
         return Result::Error(
@@ -252,23 +244,26 @@ public:
 
         m_output->clear();
 
-        const auto sourceAndCommand = Unarchiver::sourceAndCommand(m_data->sourcePath);
-        if (!sourceAndCommand) {
-            m_label->setType(InfoLabel::Error);
-            m_label->setText(sourceAndCommand.error());
-            return;
-        }
-
-        const auto onUnarchiverSetup = [this, sourceAndCommand](Unarchiver &unarchiver) {
-            unarchiver.setSourceAndCommand(*sourceAndCommand);
-            unarchiver.setDestDir(m_data->extractedPath);
-            connect(&unarchiver, &Unarchiver::outputReceived, this, [this](const QString &output) {
-                m_output->append(output);
+        const auto onUnarchiverSetup = [this](Unarchiver &unarchiver) {
+            connect(&unarchiver, &Unarchiver::progress, this, [this](const FilePath &filePath) {
+                m_output->append(filePath.toUserOutput());
             });
+
+            unarchiver.setArchive(m_data->sourcePath);
+            unarchiver.setDestination(FilePath::fromString(m_tempDir->path()));
         };
-        const auto onUnarchiverError = [this] {
+
+        const auto onUnarchiverDone = [this](const Unarchiver &unarchiver) {
+            if (unarchiver.result()) {
+                m_label->setType(InfoLabel::Ok);
+                m_label->setText(Tr::tr("Archive extracted successfully."));
+                return DoneResult::Success;
+            }
+
             m_label->setType(InfoLabel::Error);
-            m_label->setText(Tr::tr("There was an error while unarchiving."));
+            m_label->setText(
+                Tr::tr("There was an error while unarchiving: %1").arg(unarchiver.result().error()));
+            return DoneResult::Error;
         };
 
         const auto onCheckerSetup = [this](Async<CheckResult> &async) {
@@ -295,7 +290,7 @@ public:
 
         // clang-format off
         const Group root{
-            UnarchiverTask(onUnarchiverSetup, onUnarchiverError, CallDoneIf::Error),
+            UnarchiverTask(onUnarchiverSetup, onUnarchiverDone),
             AsyncTask<CheckResult>(onCheckerSetup, onCheckerDone, CallDoneIf::Success)
         };
         // clang-format on
@@ -581,8 +576,10 @@ InstallResult executePluginInstallWizard(const FilePath &archive, bool prepareFo
 
     if (spec->isEffectivelySoftloadable()) {
         spec->setEnabledBySettings(data.loadImmediately);
-        if (data.loadImmediately)
+        if (data.loadImmediately) {
             PluginManager::loadPluginsAtRuntime({spec});
+            ExtensionSystem::PluginManager::writeSettings();
+        }
         return InstallResult::Success;
     }
 
