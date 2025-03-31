@@ -17,6 +17,7 @@
 #include <QGroupBox>
 #include <QKeyEvent>
 #include <QLabel>
+#include <QProgressBar>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSize>
@@ -637,7 +638,9 @@ void Layout::flush()
                 fl->addRow(widget);
         } else if (pendingItems.size() == 2) { // Normal case, both columns used.
             LayoutItem &f1 = pendingItems[1];
-            const LayoutItem &f0 = pendingItems.at(0);
+            LayoutItem &f0 = pendingItems.at(0);
+            if (!f0.widget && f0.empty)
+                f0.widget = new QWidget;
             if (!f1.widget && !f1.layout && !f1.text.isEmpty())
                 f1.widget = createLabel(f1.text);
 
@@ -889,6 +892,11 @@ void Widget::setMinimumHeight(int height)
 void Widget::setSizePolicy(const QSizePolicy &policy)
 {
     access(this)->setSizePolicy(policy);
+}
+
+void Widget::setStyleSheet(const QString &styleSheet)
+{
+    access(this)->setStyleSheet(styleSheet);
 }
 
 void Widget::activateWindow()
@@ -1216,6 +1224,22 @@ void MarkdownBrowser::setEnableCodeCopyButton(bool enable)
 void MarkdownBrowser::setViewportMargins(int left, int top, int right, int bottom)
 {
     access(this)->setMargins(QMargins(left, top, right, bottom));
+}
+
+ProgressBar::ProgressBar(std::initializer_list<I>)
+{
+    ptr = new Implementation;
+    access(this)->setRange(0, 100);
+}
+
+int ProgressBar::value() const
+{
+    return access(this)->value();
+}
+
+void ProgressBar::setValue(int value)
+{
+    access(this)->setValue(value);
 }
 
 // Special If

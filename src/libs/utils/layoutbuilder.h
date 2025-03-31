@@ -29,6 +29,7 @@ class QHBoxLayout;
 class QLabel;
 class QLayout;
 class QObject;
+class QProgressBar;
 class QPushButton;
 class QScrollArea;
 class QSize;
@@ -270,6 +271,7 @@ public:
     void setCursor(Qt::CursorShape shape);
     void setMinimumWidth(int);
     void setMinimumHeight(int height);
+    void setStyleSheet(const QString &);
 
     void activateWindow();
     void close();
@@ -476,6 +478,18 @@ public:
     void setBasePath(const Utils::FilePath &);
     void setEnableCodeCopyButton(bool enable);
     void setViewportMargins(int left, int top, int right, int bottom);
+};
+
+class QTCREATOR_UTILS_EXPORT ProgressBar : public Widget
+{
+public:
+    using Implementation = QProgressBar;
+    using I = Building::BuilderItem<QProgressBar>;
+
+    ProgressBar(std::initializer_list<I> items);
+
+    int value() const;
+    void setValue(int);
 };
 
 // Special
