@@ -161,6 +161,13 @@ function gui.TextEdit(options) end
 
 local lineEdit = {}
 
+---@class ProgressBar : Widget
+local progressBar = {}
+
+---@param options WidgetOptions
+---@return ProgressBar
+function gui.ProgressBar(options) end
+
 ---@class PushButton : Widget
 local pushButton = {}
 

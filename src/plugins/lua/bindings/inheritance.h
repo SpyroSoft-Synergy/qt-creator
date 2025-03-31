@@ -82,6 +82,7 @@ class Grid;
 
 class Widget;
 class Group;
+class ProgressBar;
 class PushButton;
 class Row;
 class SpinBox;
@@ -104,6 +105,7 @@ SOL_BASE_CLASSES(Layouting::Stack, Layouting::Widget);
 SOL_BASE_CLASSES(Layouting::Tab, Layouting::Widget);
 SOL_BASE_CLASSES(Layouting::Group, Layouting::Widget);
 SOL_BASE_CLASSES(Layouting::TextEdit, Layouting::Widget);
+SOL_BASE_CLASSES(Layouting::ProgressBar, Layouting::Widget);
 SOL_BASE_CLASSES(Layouting::PushButton, Layouting::Widget);
 SOL_BASE_CLASSES(Layouting::SpinBox, Layouting::Widget);
 SOL_BASE_CLASSES(Layouting::Splitter, Layouting::Widget);
@@ -123,6 +125,7 @@ SOL_DERIVED_CLASSES(
     Layouting::Tab,
     Layouting::Group,
     Layouting::TextEdit,
+    Layouting::ProgressBar,
     Layouting::PushButton,
     Layouting::SpinBox,
     Layouting::Splitter,
