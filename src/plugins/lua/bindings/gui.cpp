@@ -70,6 +70,7 @@ void constructWidget(std::unique_ptr<T> &widget, const sol::table &children)
 {
     widget->setWindowTitle(children.get_or<QString>("windowTitle"sv, ""));
     widget->setToolTip(children.get_or<QString>("toolTip"sv, ""));
+    widget->setStyleSheet(children.get_or<QString>("styleSheet"sv, ""));
 
     for (size_t i = 1; i <= children.size(); ++i) {
         const auto &child = children[i];
@@ -533,6 +534,17 @@ void setupGuiModule()
             &PushButton::setText,
             "setIconPath",
             &PushButton::setIconPath,
+            sol::base_classes,
+            sol::bases<Widget, Object, Thing>());
+
+        gui.new_usertype<ProgressBar>(
+            "ProgressBar",
+            sol::call_constructor,
+            sol::factories([guard](const sol::table &children) {
+                return constructWidgetType<ProgressBar>(children, guard);
+            }),
+            "value",
+            sol::property(&ProgressBar::value, &ProgressBar::setValue),
             sol::base_classes,
             sol::bases<Widget, Object, Thing>());
 
