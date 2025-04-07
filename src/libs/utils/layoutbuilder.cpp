@@ -1007,6 +1007,11 @@ void PushButton::setFlat(bool flat)
     access(this)->setFlat(flat);
 }
 
+void PushButton::setDefault(bool isDefault)
+{
+    access(this)->setDefault(isDefault);
+}
+
 void PushButton::onClicked(QObject *guard, const std::function<void ()> &func)
 {
     QObject::connect(access(this), &QAbstractButton::clicked, guard, func);

@@ -119,6 +119,7 @@ CREATE_HAS_FUNC(setWidgetAttribute, Qt::WidgetAttribute(), bool())
 CREATE_HAS_FUNC(setAutoFillBackground, bool())
 CREATE_HAS_FUNC(setIconPath, Utils::FilePath())
 CREATE_HAS_FUNC(setFlat, bool())
+CREATE_HAS_FUNC(setDefault, bool())
 CREATE_HAS_FUNC(setOpenExternalLinks, bool())
 CREATE_HAS_FUNC(setIconSize, QSize())
 CREATE_HAS_FUNC(setWordWrap, bool())
@@ -272,6 +273,12 @@ void setProperties(std::unique_ptr<T> &item, const sol::table &children, QObject
         const auto iconSize = children.get<sol::optional<QSize>>("iconSize"sv);
         if (iconSize)
             item->setIconSize(*iconSize);
+    }
+
+    if constexpr (has_setDefault<T>) {
+        const auto isDefault = children.get<sol::optional<bool>>("default"sv);
+        if (isDefault)
+            item->setDefault(*isDefault);
     }
 
     if constexpr (has_setWindowFlags<T>) {
@@ -569,6 +576,8 @@ void setupGuiModule()
             &PushButton::setText,
             "setIconPath",
             &PushButton::setIconPath,
+            "setDefault",
+            &PushButton::setDefault,
             sol::base_classes,
             sol::bases<Widget, Object, Thing>());
 
