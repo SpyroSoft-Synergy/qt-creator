@@ -42,6 +42,7 @@ wrapper.bat
 wrapper.sh
 debug_toolchain.cmake
 CMakeUserPresets.json
+log.txt
 
 # qtcreator generated files
 *.creator.user*
