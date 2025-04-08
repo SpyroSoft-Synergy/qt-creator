@@ -214,6 +214,10 @@ function TextEditor:document() end
 ---@return MultiTextCursor cursor The cursor of the editor.
 function TextEditor:cursor() end
 
+---Returns the number of document lines
+---@param filePath FilePath
+function TextEditor.lineCount() end
+
 ---@class EmbeddedWidget
 local EmbeddedWidget = {}
 

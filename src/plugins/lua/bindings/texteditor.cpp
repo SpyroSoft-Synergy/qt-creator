@@ -554,6 +554,11 @@ void setupTextEditorModule()
                 QTC_ASSERT(document, throw sol::error("TextDocument is not valid"));
                 return document->document()->blockCount();
             },
+            "lineCount",
+            [](const TextDocumentPtr &document) {
+                QTC_ASSERT(document, throw sol::error("TextDocument is not valid"));
+                return document->document()->lineCount();
+            },
             "setSuggestions",
             [](const TextDocumentPtr &document, QList<TextSuggestion::Data> suggestions) {
                 QTC_ASSERT(document, throw sol::error("TextDocument is not valid"));

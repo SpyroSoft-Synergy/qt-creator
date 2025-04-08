@@ -599,7 +599,7 @@ void setupGuiModule()
                 return constructWidgetType<Label>(children, guard);
             }),
             "text",
-            sol::property(&Label::text),
+            sol::property(&Label::text, &Label::setText),
             sol::base_classes,
             sol::bases<Widget, Object, Thing>());
 
