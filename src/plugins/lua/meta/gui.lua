@@ -67,6 +67,10 @@ function gui.widget:setFocus() end
 ---@param on boolean set or reset the flag
 function gui.widget:setWindowFlag(flags, on) end
 
+---Set the widget minimum width
+---@param width integer minimum width value
+function gui.widget:setMinimumWidth(width) end
+
 ---Column layout
 ---@class Column : Layout
 local column = {}

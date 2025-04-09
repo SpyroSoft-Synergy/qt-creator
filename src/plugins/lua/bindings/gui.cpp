@@ -637,6 +637,8 @@ void setupGuiModule()
             [](Widget *self) { self->emerge()->setFocus(); },
             "setWindowFlag",
             &Widget::setWindowFlag,
+            "setMinimumWidth",
+            &Widget::setMinimumWidth,
             sol::base_classes,
             sol::bases<Object, Thing>());
 
