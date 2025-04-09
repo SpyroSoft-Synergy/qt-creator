@@ -331,6 +331,7 @@ public:
     void setIconPath(const Utils::FilePath &);
     void setIconSize(const QSize &);
     void setFlat(bool);
+    void setDefault(bool);
     void onClicked(QObject *guard, const std::function<void()> &);
 };
 
