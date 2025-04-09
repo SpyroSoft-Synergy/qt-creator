@@ -14,6 +14,7 @@ gui.layout = {}
 ---@class Widget : Object
 ---@field visible boolean Whether the widget is visible or not.
 ---@field enabled boolean Whether the widget is enabled or not.
+---@field focus   boolean Whether the widget has focus or not.
 gui.widget = {}
 
 ---@alias LayoutChild string|BaseAspect|Layout|Widget|function
@@ -57,6 +58,14 @@ function gui.widget:activateWindow() end
 
 ---Closes the widget. (see [QWidget::close](https://doc.qt.io/qt-5/qwidget.html#close))
 function gui.widget:close() end
+
+---Set the focus on the widget.
+function gui.widget:setFocus() end
+
+---Set the widget window flag.
+---@param flag WindowType window flags
+---@param on boolean set or reset the flag
+function gui.widget:setWindowFlag(flags, on) end
 
 ---Column layout
 ---@class Column : Layout
