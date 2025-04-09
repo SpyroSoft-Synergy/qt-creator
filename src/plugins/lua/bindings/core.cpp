@@ -60,7 +60,6 @@ void setupCoreModule()
 
         editorManager["openEditor"] = [](const Utils::FilePath &filePath,
             EditorManager::OpenEditorFlag flags = EditorManager::OpenEditorFlag::NoFlags) -> QPointer<TextEditor::BaseTextEditor> {
-            std::cout << "EditorManager::openEditor(" << filePath.nativePath().toStdString() << ", " << (int)flags << "(\n";
             IEditor* editor = EditorManager::openEditor(filePath, Utils::Id::generate(), flags);
             return dynamic_cast<TextEditor::BaseTextEditor*>(editor);
         };
