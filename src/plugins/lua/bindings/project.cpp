@@ -5,14 +5,12 @@
 
 #include <QDebug>
 
-#include <cmakeprojectmanager/cmakeprojectnodes.h>
 #include <projectexplorer/buildmanager.h>
 #include <projectexplorer/buildsystem.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/projectmanager.h>
-#include <projectexplorer/projectnodes.h>
 #include <projectexplorer/runconfiguration.h>
 #include <projectexplorer/runcontrol.h>
 #include <projectexplorer/target.h>
@@ -73,10 +71,14 @@ void setupProjectModule()
                 if (!rootNode) {
                     return false;
                 }
+
                 Node* targetNode = nullptr;
                 QString targetBuildKey(QString::fromStdString(targetName));
                 QString appTargetBuildKey = "app" + targetBuildKey;
                 std::function<void(Node*)> searchNode = [&targetBuildKey, &appTargetBuildKey, &targetNode, &searchNode](Node* node) {
+                    // Note: CMakeTargetNode is currently internal.
+                    // If it becomes accessible to other libraries in the future, the logic can be replaced with:
+                    // if (dynamic_cast<CMakeProjectManager::Internal::CMakeTargetNode *>(node))"
                     QString className = QString::fromUtf8(typeid(*node).name());
                     if (className.contains("CMakeTargetNode")) {
                         qDebug() << "Potential CMakeTargetNode:" << node->buildKey();
@@ -103,6 +105,9 @@ void setupProjectModule()
                 Utils::FilePaths filesToAdd;
                 filesToAdd.append(Utils::FilePath::fromString(QString::fromStdString(filePath)));
                 Utils::FilePaths notAdded;
+                // Currently CMakeBuildSystem operates on nodes of type TargetNode,
+                // unlike other buildSystems like QmakeBuildSystem that are based on ProjectNode.
+                // Due to this API-level inconsistency, we need to manually specify the TargetNode to which the file should be added
                 return buildSystem->addFiles(targetNode, filesToAdd, &notAdded);
             });
 
