@@ -3,11 +3,16 @@
 
 #include "../luaengine.h"
 
+#include <QDebug>
+
+#include <cmakeprojectmanager/cmakeprojectnodes.h>
 #include <projectexplorer/buildmanager.h>
+#include <projectexplorer/buildsystem.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/projectmanager.h>
+#include <projectexplorer/projectnodes.h>
 #include <projectexplorer/runconfiguration.h>
 #include <projectexplorer/runcontrol.h>
 #include <projectexplorer/target.h>
@@ -54,7 +59,52 @@ void setupProjectModule()
             "directory",
             sol::property(&Project::projectDirectory),
             "activeRunConfiguration",
-            [](Project *project) { return project->activeRunConfiguration(); });
+            [](Project *project) { return project->activeRunConfiguration(); },
+            "addFileToTarget",
+            [](Project *project, const std::string &targetName, const std::string &filePath) {
+                if (!project) {
+                    return false;
+                }
+                auto buildSystem = project->activeBuildSystem();
+                if (!buildSystem) {
+                    return false;
+                }
+                auto rootNode = project->rootProjectNode();
+                if (!rootNode) {
+                    return false;
+                }
+                Node* targetNode = nullptr;
+                QString targetBuildKey(QString::fromStdString(targetName));
+                QString appTargetBuildKey = "app" + targetBuildKey;
+                std::function<void(Node*)> searchNode = [&targetBuildKey, &appTargetBuildKey, &targetNode, &searchNode](Node* node) {
+                    QString className = QString::fromUtf8(typeid(*node).name());
+                    if (className.contains("CMakeTargetNode")) {
+                        qDebug() << "Potential CMakeTargetNode:" << node->buildKey();
+                        if(node->buildKey() == targetBuildKey || node->buildKey() == appTargetBuildKey) {
+                            qDebug() << "Find CMakeTargetNode:" << node->buildKey();
+                            targetNode = node;
+                            return;
+                        }
+                    }
+                    if (auto folderNode = dynamic_cast<FolderNode*>(node)) {
+                        for (Node* childNode : folderNode->nodes()) {
+                            if (targetNode) return;
+                            searchNode(childNode);
+                        }
+                    }
+                };
+                searchNode(rootNode);
+
+                if (!targetNode) {
+                    qCritical() << "Target node not found: " << targetBuildKey;
+                    return false;
+                }
+
+                Utils::FilePaths filesToAdd;
+                filesToAdd.append(Utils::FilePath::fromString(QString::fromStdString(filePath)));
+                Utils::FilePaths notAdded;
+                return buildSystem->addFiles(targetNode, filesToAdd, &notAdded);
+            });
 
         result["startupProject"] = [] { return ProjectManager::instance()->startupProject(); };
 
