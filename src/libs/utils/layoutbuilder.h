@@ -263,6 +263,7 @@ public:
     void setFixedSize(const QSize &);
     void setWindowTitle(const QString &);
     void setWindowFlags(Qt::WindowFlags);
+    void setWindowFlag(Qt::WindowType, bool on = true);
     void setWidgetAttribute(Qt::WidgetAttribute, bool on);
     void setToolTip(const QString &);
     void setNoMargins(int = 0);

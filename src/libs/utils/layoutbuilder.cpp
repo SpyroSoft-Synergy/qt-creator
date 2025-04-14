@@ -824,6 +824,11 @@ void Widget::setWindowFlags(Qt::WindowFlags flags)
     access(this)->setWindowFlags(flags);
 }
 
+void Widget::setWindowFlag(Qt::WindowType flag, bool on)
+{
+    access(this)->setWindowFlag(flag, on);
+}
+
 void Widget::setWidgetAttribute(Qt::WidgetAttribute attr, bool on)
 {
     access(this)->setAttribute(attr, on);
