@@ -4,6 +4,8 @@
 #include "../luaengine.h"
 
 #include <coreplugin/generatedfile.h>
+#include <coreplugin/editormanager/editormanager.h>
+#include <texteditor/texteditor.h>
 
 using namespace Core;
 
@@ -39,6 +41,29 @@ void setupCoreModule()
         );
         // clang-format on
 
+        core.new_enum("OpenEditorFlag",
+            "NoFlags", EditorManager::OpenEditorFlag::NoFlags,
+            "DoNotChangeCurrentEditor", EditorManager::OpenEditorFlag::DoNotChangeCurrentEditor,
+            "IgnoreNavigationHistory", EditorManager::OpenEditorFlag::IgnoreNavigationHistory,
+            "DoNotMakeVisible", EditorManager::OpenEditorFlag::DoNotMakeVisible,
+            "OpenInOtherSplit", EditorManager::OpenEditorFlag::OpenInOtherSplit,
+            "DoNotSwitchToDesignMode", EditorManager::OpenEditorFlag::DoNotSwitchToDesignMode,
+            "DoNotSwitchToEditMode", EditorManager::OpenEditorFlag::DoNotSwitchToEditMode,
+            "SwitchSplitIfAlreadyVisible", EditorManager::OpenEditorFlag::SwitchSplitIfAlreadyVisible,
+            "DoNotRaise", EditorManager::OpenEditorFlag::DoNotRaise,
+            "AllowExternalEditor", EditorManager::OpenEditorFlag::AllowExternalEditor
+        );
+
+        auto editorManager = core.new_usertype<EditorManager>(
+            "EditorManager",
+            sol::no_constructor);
+
+        editorManager["openEditor"] = [](const Utils::FilePath &filePath,
+            EditorManager::OpenEditorFlag flags = EditorManager::OpenEditorFlag::NoFlags) -> QPointer<TextEditor::BaseTextEditor> {
+            IEditor* editor = EditorManager::openEditor(filePath, Utils::Id::generate(), flags);
+            return dynamic_cast<TextEditor::BaseTextEditor*>(editor);
+        };
+        
         return core;
     });
 }

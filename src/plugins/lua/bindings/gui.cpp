@@ -599,7 +599,7 @@ void setupGuiModule()
                 return constructWidgetType<Label>(children, guard);
             }),
             "text",
-            sol::property(&Label::text),
+            sol::property(&Label::text, &Label::setText),
             sol::base_classes,
             sol::bases<Widget, Object, Thing>());
 
@@ -635,6 +635,10 @@ void setupGuiModule()
             sol::property([](Widget *self) { return self->emerge()->hasFocus(); }),
             "setFocus",
             [](Widget *self) { self->emerge()->setFocus(); },
+            "setWindowFlag",
+            &Widget::setWindowFlag,
+            "setMinimumWidth",
+            &Widget::setMinimumWidth,
             sol::base_classes,
             sol::bases<Object, Thing>());
 
