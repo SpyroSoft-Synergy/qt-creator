@@ -56,4 +56,10 @@ function project.runStartupProject(runnable, displayName) end
 ---@return int Number of stopped configurations.
 function project.stopRunConfigurationsByName(displayName, force) end
 
+---Adds a file to a specific target in the project.
+---@param targetName string The name of the target to add the file to.
+---@param filePath string The path of the file to be added.
+---@return boolean True if the file was successfully added, false otherwise.
+function project:addFileToTarget(targetName, filePath) end
+
 return project
