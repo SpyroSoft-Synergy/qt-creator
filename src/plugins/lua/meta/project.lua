@@ -35,6 +35,12 @@ project.Project = {}
 ---@return RunConfiguration|nil The active run configuration of the project, or nil if there is no active run configuration.
 function project.Project:activeRunConfiguration() end
 
+---Adds a file to a specific target in the project.
+---@param targetName string The name of the target to add the file to.
+---@param filePath string The path of the file to be added.
+---@return boolean True if the file was successfully added, false otherwise.
+function project:addFileToTarget(targetName, filePath) end
+
 ---Returns the startup project.
 ---@return Project|nil The startup project, or nil if there is no startup project.
 function project.startupProject() end
@@ -55,11 +61,5 @@ function project.runStartupProject(runnable, displayName) end
 ---@param force? boolean Whether to close project forcefully (false assumeed if not provided).
 ---@return int Number of stopped configurations.
 function project.stopRunConfigurationsByName(displayName, force) end
-
----Adds a file to a specific target in the project.
----@param targetName string The name of the target to add the file to.
----@param filePath string The path of the file to be added.
----@return boolean True if the file was successfully added, false otherwise.
-function project:addFileToTarget(targetName, filePath) end
 
 return project
