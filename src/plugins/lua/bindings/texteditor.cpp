@@ -106,7 +106,7 @@ void setRefactorMarker(
     marker.icon = icon.icon();
     marker.callback = [callback](TextEditorWidget *) {
         Result<> res = Lua::void_safe_call(callback);
-        QTC_CHECK_EXPECTED(res);
+        QTC_CHECK_RESULT(res);
     };
     marker.type = id;
 
@@ -408,7 +408,7 @@ void setupTextEditorModule()
             [guard](EmbeddedWidgetInterface *widget, sol::main_function func) {
                 QObject::connect(widget, &EmbeddedWidgetInterface::shouldClose, guard, [func]() {
                     Result<> res = void_safe_call(func);
-                    QTC_CHECK_EXPECTED(res);
+                    QTC_CHECK_RESULT(res);
                 });
             });
 
@@ -608,7 +608,7 @@ void setupTextEditorModule()
             guard,
             [func](BaseTextEditor *editor) {
                 Result<> res = void_safe_call(func, editor);
-                QTC_CHECK_EXPECTED(res);
+                QTC_CHECK_RESULT(res);
             });
     });
 
@@ -619,7 +619,7 @@ void setupTextEditorModule()
             guard,
             [func](TextEditorPtr editor) {
                 Result<> res = void_safe_call(func, editor);
-                QTC_CHECK_EXPECTED(res);
+                QTC_CHECK_RESULT(res);
             });
     });
 
@@ -631,7 +631,7 @@ void setupTextEditorModule()
             [func](TextDocument *document, int position, int charsRemoved, int charsAdded) {
                 Result<> res
                     = void_safe_call(func, document, position, charsRemoved, charsAdded);
-                QTC_CHECK_EXPECTED(res);
+                QTC_CHECK_RESULT(res);
             });
     });
 
@@ -642,7 +642,7 @@ void setupTextEditorModule()
             guard,
             [func](BaseTextEditor *editor, const MultiTextCursor &cursor) {
                 Result<> res = void_safe_call(func, editor, cursor);
-                QTC_CHECK_EXPECTED(res);
+                QTC_CHECK_RESULT(res);
             });
     });
 }

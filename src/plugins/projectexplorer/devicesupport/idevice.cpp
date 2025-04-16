@@ -329,7 +329,7 @@ FileTransferInterface *IDevice::createFileTransferInterface(
 Environment IDevice::systemEnvironment() const
 {
     Result<Environment> env = systemEnvironmentWithError();
-    QTC_ASSERT_EXPECTED(env, return {});
+    QTC_ASSERT_RESULT(env, return {});
     return *env;
 }
 
@@ -718,7 +718,7 @@ bool IDevice::ensureReachable(const FilePath &other) const
 
 Result<FilePath> IDevice::localSource(const Utils::FilePath &other) const
 {
-    Q_UNUSED(other);
+    Q_UNUSED(other)
     return make_unexpected(Tr::tr("localSource() not implemented for this device type."));
 }
 

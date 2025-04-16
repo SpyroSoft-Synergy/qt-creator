@@ -11,14 +11,12 @@
 
 #include <coreplugin/editormanager/editormanager.h>
 
-#include <utils/fileutils.h>
-#include <utils/qtcassert.h>
-#include <utils/macroexpander.h>
-#include <utils/templateengine.h>
 #include <utils/algorithm.h>
+#include <utils/macroexpander.h>
+#include <utils/qtcassert.h>
+#include <utils/stringutils.h>
+#include <utils/templateengine.h>
 
-#include <QDir>
-#include <QDirIterator>
 #include <QVariant>
 
 using namespace Utils;
@@ -28,14 +26,14 @@ namespace ProjectExplorer::Internal {
 class JsonWizardFileGenerator final : public JsonWizardGenerator
 {
 public:
-    Utils::Result<> setup(const QVariant &data);
+    Result<> setup(const QVariant &data);
 
     Core::GeneratedFiles fileList(MacroExpander *expander,
                                   const FilePath &wizardDir,
                                   const FilePath &projectDir,
                                   QString *errorMessage) final;
 
-    Utils::Result<> writeFile(const JsonWizard *wizard, Core::GeneratedFile *file) final;
+    Result<> writeFile(const JsonWizard *wizard, Core::GeneratedFile *file) final;
 
 private:
     class File {
@@ -53,8 +51,7 @@ private:
         QList<JsonWizard::OptionDefinition> options;
     };
 
-    Core::GeneratedFile generateFile(const File &file, MacroExpander *expander,
-                                     QString *errorMessage);
+    Result<Core::GeneratedFile> generateFile(const File &file, MacroExpander *expander);
 
     QList<File> m_fileList;
 
@@ -109,13 +106,12 @@ Result<> JsonWizardFileGenerator::setup(const QVariant &data)
     return ResultOk;
 }
 
-Core::GeneratedFile JsonWizardFileGenerator::generateFile(const File &file,
-    MacroExpander *expander, QString *errorMessage)
+Result<Core::GeneratedFile> JsonWizardFileGenerator::generateFile(const File &file, MacroExpander *expander)
 {
     // Read contents of source file
-    FileReader reader;
-    if (!reader.fetch(file.source, errorMessage))
-        return Core::GeneratedFile();
+    const Result<QByteArray> contents = file.source.fileContents();
+    if (!contents)
+        return ResultError(contents.error());
 
     // Generate file information:
     Core::GeneratedFile gf;
@@ -124,7 +120,7 @@ Core::GeneratedFile JsonWizardFileGenerator::generateFile(const File &file,
     if (!file.keepExisting) {
         if (file.isBinary.toBool()) {
             gf.setBinary(true);
-            gf.setBinaryContents(reader.data());
+            gf.setBinaryContents(contents.value());
         } else {
             // TODO: Document that input files are UTF8 encoded!
             gf.setBinary(false);
@@ -147,12 +143,13 @@ Core::GeneratedFile JsonWizardFileGenerator::generateFile(const File &file,
                 return expander->resolveMacro(n, ret);
             });
 
-            gf.setContents(TemplateEngine::processText(&nested, QString::fromUtf8(reader.text()),
-                                                              errorMessage));
-            if (!errorMessage->isEmpty()) {
-                *errorMessage = Tr::tr("When processing \"%1\":<br>%2")
-                        .arg(file.source.toUserOutput(), *errorMessage);
-                return Core::GeneratedFile();
+            QString errorMessage;
+            gf.setContents(TemplateEngine::processText(&nested,
+                                                       QString::fromUtf8(normalizeNewlines(contents.value())),
+                                                       &errorMessage));
+            if (!errorMessage.isEmpty()) {
+                return ResultError(Tr::tr("When processing \"%1\":<br>%2")
+                        .arg(file.source.toUserOutput(), errorMessage));
             }
         }
         if (!file.source.isResourceFile()) // resource files mess up permissions, stay with default
@@ -233,11 +230,10 @@ Core::GeneratedFiles JsonWizardFileGenerator::fileList(MacroExpander *expander,
 
     const Core::GeneratedFiles result
         = Utils::transform(fileList, [this, &expander, &errorMessage](const File &f) {
-              QString generateError;
-              const Core::GeneratedFile file = generateFile(f, expander, &generateError);
-              if (!generateError.isEmpty())
-                  *errorMessage = generateError;
-              return file;
+              const Result<Core::GeneratedFile> file = generateFile(f, expander);
+              if (!file)
+                  *errorMessage = file.error();
+              return file.value();
           });
 
     if (Utils::contains(result, [](const Core::GeneratedFile &gf) {

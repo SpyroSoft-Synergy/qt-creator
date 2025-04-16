@@ -649,7 +649,7 @@ Result<FilePath> FilePath::tmpDir() const
     if (!isLocal()) {
         const Result<Environment> env = deviceEnvironmentWithError();
         if (!env)
-            return make_unexpected(env.error());
+            return ResultError(env.error());
 
         if (env->hasKey("TMPDIR"))
             return withNewPath(env->value("TMPDIR")).cleanPath();
@@ -660,7 +660,7 @@ Result<FilePath> FilePath::tmpDir() const
 
         if (osType() != OsTypeWindows)
             return withNewPath("/tmp");
-        return make_unexpected(QString("Could not find temporary directory on device %1")
+        return ResultError(QString("Could not find temporary directory on device %1")
                                .arg(displayName()));
     }
 
@@ -675,7 +675,7 @@ Result<FilePath> FilePath::createTempFile() const
         if (file.open())
             return FilePath::fromString(file.fileName());
 
-        return make_unexpected(QString("Could not create temporary file: %1").arg(file.errorString()));
+        return ResultError(QString("Could not create temporary file: %1").arg(file.errorString()));
     }
 
     return fileAccess()->createTempFile(*this);
@@ -1340,7 +1340,7 @@ DeviceFileAccess *FilePath::fileAccess() const
 {
     static DeviceFileAccess dummy;
     const Result<DeviceFileAccess *> access = getFileAccess(*this);
-    QTC_ASSERT_EXPECTED(access, return &dummy);
+    QTC_ASSERT_RESULT(access, return &dummy);
     return *access;
 }
 
@@ -1900,7 +1900,7 @@ FilePaths FilePath::searchAllInPath(const FilePaths &additionalDirs,
 Environment FilePath::deviceEnvironment() const
 {
     Result<Environment> env = deviceEnvironmentWithError();
-    QTC_ASSERT_EXPECTED(env, return {});
+    QTC_ASSERT_RESULT(env, return {});
     return *env;
 }
 
@@ -2081,7 +2081,7 @@ Result<> FilePath::renameFile(const FilePath &target) const
     // If we fail to remove the source file, we remove the target file to return to the
     // original state.
     Result<> rmResult = target.removeFile();
-    QTC_CHECK_EXPECTED(rmResult);
+    QTC_CHECK_RESULT(rmResult);
     return ResultError(
         Tr::tr("Failed to move %1 to %2. Removing the source file failed: %3")
             .arg(toUserOutput())
@@ -2342,7 +2342,7 @@ Result<FilePath> FilePath::localSource() const
         return *this;
 
     QTC_ASSERT(deviceFileHooks().localSource,
-               return make_unexpected(Tr::tr("No \"localSource\" device hook set.")));
+               return ResultError(Tr::tr("No \"localSource\" device hook set.")));
     return deviceFileHooks().localSource(*this);
 }
 
@@ -2537,7 +2537,7 @@ QTCREATOR_UTILS_EXPORT bool operator>=(const FilePath &first, const FilePath &se
 
 QTCREATOR_UTILS_EXPORT size_t qHash(const FilePath &filePath, uint seed)
 {
-    Q_UNUSED(seed);
+    Q_UNUSED(seed)
 
     if (filePath.m_hash == 0) {
         if (filePath.caseSensitivity() == Qt::CaseSensitive)
@@ -2572,7 +2572,7 @@ Result<std::unique_ptr<TemporaryFilePath>> TemporaryFilePath::create(
 {
     Result<FilePath> result = templatePath.createTempFile();
     if (!result)
-        return make_unexpected(result.error());
+        return ResultError(result.error());
     return std::unique_ptr<TemporaryFilePath>(new TemporaryFilePath(templatePath, *result));
 }
 

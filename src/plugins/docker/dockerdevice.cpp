@@ -44,7 +44,6 @@
 #include <utils/devicefileaccess.h>
 #include <utils/deviceshell.h>
 #include <utils/environment.h>
-#include <utils/expected.h>
 #include <utils/fileutils.h>
 #include <utils/hostosinfo.h>
 #include <utils/infolabel.h>
@@ -222,12 +221,12 @@ public:
         Result<FilePath> cmdBridgePath = getCmdBridgePath();
 
         if (!cmdBridgePath)
-            return make_unexpected(cmdBridgePath.error());
+            return ResultError(cmdBridgePath.error());
 
         auto fAccess = std::make_unique<DockerDeviceFileAccess>(this);
 
         if (auto result = updateContainerAccess(); !result)
-            return make_unexpected(result.error());
+            return ResultError(result.error());
 
         Result<> initResult = ResultOk;
         if (cmdBridgePath->isSameDevice(Docker::Internal::settings().dockerBinaryPath())) {
@@ -238,7 +237,7 @@ public:
                 = fAccess->deployAndInit(Core::ICore::libexecPath(), q->rootPath(), q->environment());
         }
         if (!initResult)
-            return make_unexpected(initResult.error());
+            return ResultError(initResult.error());
 
         return fAccess;
     }
@@ -549,7 +548,7 @@ Result<Environment> DockerDevicePrivate::fetchEnvironment() const
     envCaptureProcess.setWriteData("printenv\n");
     envCaptureProcess.runBlocking();
     if (envCaptureProcess.result() != ProcessResult::FinishedWithSuccess) {
-        return make_unexpected(envCaptureProcess.readAllStandardError());
+        return ResultError(envCaptureProcess.readAllStandardError());
     }
     const QStringList envLines = QString::fromUtf8(envCaptureProcess.readAllRawStandardOutput())
                                      .split('\n', Qt::SkipEmptyParts);
@@ -710,9 +709,8 @@ DockerDevice::DockerDevice()
 
     setFileAccessFactory([this] { return d->createFileAccess(); });
 
-    setOpenTerminal([this](const Environment &env,
-                           const FilePath &workingDir) -> Result<> {
-        Q_UNUSED(env); // TODO: That's the runnable's environment in general. Use it via -e below.
+    setOpenTerminal([this](const Environment &env, const FilePath &workingDir) -> Result<> {
+        Q_UNUSED(env) // TODO: That's the runnable's environment in general. Use it via -e below.
 
         Result<QString> result = d->updateContainerAccess();
 
@@ -777,10 +775,6 @@ Result<CommandLine> DockerDevicePrivate::withDockerExecCmd(
     else
         containerId = *result;
 
-    auto osAndArch = osTypeAndArch();
-    if (!osAndArch)
-        return make_unexpected(osAndArch.error());
-
     CommandLine dockerCmd{settings().dockerBinaryPath(), {"exec"}};
 
     if (interactive)
@@ -803,12 +797,16 @@ Result<CommandLine> DockerDevicePrivate::withDockerExecCmd(
 
     dockerCmd.addArg(containerId);
 
-    dockerCmd.addArgs({"/bin/sh", "-c"}, osAndArch->first);
+    dockerCmd.addArgs({"/bin/sh", "-c"});
 
     CommandLine exec("exec");
     exec.addCommandLineAsArgs(cmd, CommandLine::Raw);
 
     if (withMarker) {
+        auto osAndArch = osTypeAndArch();
+        if (!osAndArch)
+            return make_unexpected(osAndArch.error());
+
         // Check the executable for existence.
         CommandLine testType({"type", {}});
         testType.addArg(cmd.executable().path(), osAndArch->first);
@@ -822,9 +820,9 @@ Result<CommandLine> DockerDevicePrivate::withDockerExecCmd(
 
         testType.addCommandLineWithAnd(echo);
 
-        dockerCmd.addCommandLineAsSingleArg(testType, osAndArch->first);
+        dockerCmd.addCommandLineAsSingleArg(testType);
     } else {
-        dockerCmd.addCommandLineAsSingleArg(exec, osAndArch->first);
+        dockerCmd.addCommandLineAsSingleArg(exec);
     }
 
     return dockerCmd;
@@ -928,7 +926,7 @@ Result<FilePath> DockerDevicePrivate::getCmdBridgePath() const
 QStringList DockerDevicePrivate::createMountArgs() const
 {
     const Utils::Result<Utils::FilePath> cmdBridgePath = getCmdBridgePath();
-    QTC_CHECK_EXPECTED(cmdBridgePath);
+    QTC_CHECK_RESULT(cmdBridgePath);
 
     QStringList cmds;
     QList<MountPair> mounts;
