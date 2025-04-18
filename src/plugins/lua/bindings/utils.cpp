@@ -157,6 +157,8 @@ void setupUtilsModule()
                 &FilePath::isExecutableFile,
                 "isDir",
                 &FilePath::isDir,
+                "isFile",
+                &FilePath::isFile,
                 "nativePath",
                 &FilePath::nativePath,
                 "toUserOutput",
@@ -175,6 +177,22 @@ void setupUtilsModule()
                 &FilePath::isAbsolutePath,
                 "createDir",
                 &FilePath::createDir,
+                "removeFile",
+                [](FilePath* filePath){
+                    return (filePath->removeFile() == ResultOk);
+                },
+                "removeRecursively",
+                [](FilePath* filePath){
+                    return (filePath->removeRecursively() == ResultOk);
+                },
+                "copyFile",
+                [](FilePath* filePath, const FilePath &target){
+                    return (filePath->copyFile(target) == ResultOk);
+                },
+                "copyRecursively",
+                [](FilePath* filePath, const FilePath &target){
+                    return (filePath->copyRecursively(target) == ResultOk);
+                },
                 "resolvePath",
                 sol::overload(
                     [](const FilePath &p, const QString &path) { return p.resolvePath(path); },
@@ -193,6 +211,29 @@ void setupUtilsModule()
 
             utils["FilePath"]["searchInPath_cb"] = utils["__searchInPath_cb__"];
             utils["FilePath"]["searchInPath"] = wrap(utils["__searchInPath_cb__"]);
+
+            utils.new_enum("QDirFilters",
+                "Dirs", QDir::Filter::Dirs,
+                "Files", QDir::Filter::Files,
+                "Drives", QDir::Filter::Drives,
+                "NoSymLinks", QDir::Filter::NoSymLinks,
+                "AllEntries", QDir::Filter::AllEntries,
+                "TypeMask", QDir::Filter::TypeMask,
+                "Readable", QDir::Filter::Readable,
+                "Writable", QDir::Filter::Writable,
+                "Executable", QDir::Filter::Executable,
+                "PermissionMask", QDir::Filter::PermissionMask,
+                "Modified", QDir::Filter::Modified,
+                "Hidden", QDir::Filter::Hidden,
+                "System", QDir::Filter::System,
+                "AccessMask", QDir::Filter::AccessMask,
+                "AllDirs", QDir::Filter::AllDirs,
+                "CaseSensitive", QDir::Filter::CaseSensitive,
+                "NoDot", QDir::Filter::NoDot,
+                "NoDotDot", QDir::Filter::NoDotDot,
+                "NoDotAndDotDot", QDir::Filter::NoDotAndDotDot,
+                "NoFilter", QDir::Filter::NoFilter
+            );
 
             utils["standardLocations"] = [](QStandardPaths::StandardLocation location) {
                 const auto locationsStrings = QStandardPaths::standardLocations(
