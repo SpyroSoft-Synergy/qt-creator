@@ -26,6 +26,30 @@ function utils.getNativeShortcut(shortcut) end
 ---@class Id
 utils.Id = {}
 
+---@enum QDirFilters
+utils.QDirFilters = {
+    Dirs = 0,
+    Files = 0,
+    Drives = 0,
+    NoSymLinks = 0,
+    AllEntries = 0,
+    TypeMask = 0,
+    Readable = 0,
+    Writable = 0,
+    Executable = 0,
+    PermissionMask = 0,
+    Modified = 0,
+    Hidden = 0,
+    System = 0,
+    AccessMask = 0,
+    AllDirs = 0,
+    CaseSensitive = 0,
+    NoDot = 0,
+    NoDotDot = 0,
+    NoDotAndDotDot = 0,
+    NoFilter = 0,
+};
+
 ---@class FilePath
 utils.FilePath = {}
 
@@ -59,6 +83,14 @@ function utils.FilePath:exists() end
 ---Returns whether the target is a file and executable.
 ---@return boolean
 function utils.FilePath:isExecutableFile() end
+
+---Returns whether the target is a directory.
+---@return boolean
+function utils.FilePath:isDir() end
+
+---Returns whether the target is a file.
+---@return boolean
+function utils.FilePath:isFile() end
 
 ---Returns the path portion of FilePath as a string in the hosts native format.
 ---@return string
@@ -108,6 +140,26 @@ function utils.FilePath:setPermissions() end
 ---Creates a directory
 ---@return boolean
 function utils.FilePath:createDir() end
+
+---Removes a file
+---@param filePath FilePath The file to remove.
+---@return boolean true if success, false otherwise.
+function utils.FilePath:removeFile(filePath) end
+
+---Removes recursively a directory
+---@param filePath FilePath The directory to remove.
+---@return boolean true if success, false otherwise.
+function utils.FilePath:removeRecursively(filePath) end
+
+---Copies a file to the given path.
+---@param filePath FilePath The file to copy.
+---@param targetPath FilePath The target path to copy the file to.
+function utils.FilePath:copyFile(filePath) end
+
+---Copies recursively a directory to the given path.
+---@param filePath FilePath The directory to copy.
+---@return boolean true if success, false otherwise.
+function utils.FilePath:copyRecursively(filePath) end
 
 ---Returns the list of paths for the given standard location.
 ---@param location StandardLocation The standard location to get paths for.
