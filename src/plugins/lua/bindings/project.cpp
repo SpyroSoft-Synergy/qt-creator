@@ -112,6 +112,10 @@ void setupProjectModule()
                 // Due to this API-level inconsistency, we need to manually specify the TargetNode to which the file should be added
                 return buildSystem->addFiles(targetNode, filesToAdd, &notAdded);
             });
+        
+        result["projectForFile"] = [](const FilePath &fileName) {
+            return ProjectManager::instance()->projectForFile(fileName);
+        };
 
         result["startupProject"] = [] { return ProjectManager::instance()->startupProject(); };
 

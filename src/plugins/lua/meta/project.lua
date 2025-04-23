@@ -41,6 +41,10 @@ function project.Project:activeRunConfiguration() end
 ---@return boolean True if the file was successfully added, false otherwise.
 function project:addFileToTarget(targetName, filePath) end
 
+---Returns the project for given file path.
+---@param filePath FilePath The path of the file.
+function project.projectForFile(filePath) end
+
 ---Returns the startup project.
 ---@return Project|nil The startup project, or nil if there is no startup project.
 function project.startupProject() end
